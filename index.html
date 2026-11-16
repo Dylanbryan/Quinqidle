@@ -220,10 +220,10 @@ function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;
 function $(s){return document.querySelector(s)}
 function money(n){return '$'+Number(n).toLocaleString('en-US')}
 function J(id){return S.jobs.filter(function(j){return j.id===id})[0]}
-function pname(k){return (S.profiles[k]&&S.profiles[k].name)||S.names[k]||k}
+function pname(k){profQ(k);return (S.profiles[k]&&S.profiles[k].name)||S.names[k]||k}
 function nm(p){return pname(p.by)}
 var PROFILES={'Ana Ruiz':{headline:'Product designer',rate:60,skills:'Figma, Webflow, Branding'},'Dev Shah':{headline:'Front-end developer',rate:75,skills:'HTML, CSS, React'},'Priya Nair':{headline:'Brand and logo designer',rate:55,skills:'Logos, Illustrator, Brand kits'},'Tom Lind':{headline:'Shopify developer',rate:80,skills:'Shopify, Liquid, JavaScript'}};
-function prof(p){return S.profiles[p.by]||PROFILES[p.by]}
+function prof(p){profQ(p.by);return S.profiles[p.by]||PROFILES[p.by]}
 function skillTags(s){return String(s||'').split(',').map(function(x){return x.trim()}).filter(Boolean).slice(0,20).map(function(x){return '<span class="tag">'+esc(x)+'</span>'}).join('')}
 function profBlock(p){var r=prof(p);if(!r||!r.headline)return '<div class="note">No profile yet</div>';return '<div class="meta"><span>'+esc(r.headline)+'</span>'+(r.rate?'<span>'+money(r.rate)+'/hr</span>':'')+'</div><div class="skills">'+skillTags(r.skills)+'</div>'+(r.bio?'<p class="note">'+esc(r.bio)+'</p>':'')}
 var SK={'AI & Machine Learning':'AI Integration|Chatbot Development|Machine Learning|Generative AI|Deep Learning|AI Model Development|AI Development|AI Data Annotation|Data Labeling',
@@ -353,8 +353,8 @@ function addForm(k,p1,p2,price){return '<label for="'+k+'-t">Title</label><input
 function syncMain(){if(!$('#pn'))return;var r=S.profile;r.name=$('#pn').value.trim();r.headline=$('#ph').value.trim();r.rate=Number($('#pr').value)||'';r.skills=$('#ps').value.trim();r.bio=$('#pb').value.trim();r.avail=$('#pa').value;r.hours=$('#phr').value.trim();r.minp=Number($('#pm2').value)||'';r.langs=$('#pl').value.trim();r.tools=$('#pt').value.trim();commitDrafts()}
 function commitDrafts(){[['sv','services'],['pf','portfolio'],['ex','exp']].forEach(function(a){var t=$('#'+a[0]+'-t'),d=$('#'+a[0]+'-d');if(!t||!t.value.trim())return;var o={id:S.next++,title:t.value.trim(),desc:d?d.value.trim():''};if(a[0]==='sv'){var pr=$('#sv-p');o.price=Number(pr&&pr.value)||0;if(pr)pr.value=''}S.profile[a[1]].push(o);t.value='';if(d)d.value=''})}
 function delItem(key,id){syncMain();S.profile[key]=S.profile[key].filter(function(x){return x.id!==id});save();render()}
-function pickPhoto(inp){var f=inp.files&&inp.files[0];if(!f)return;syncMain();var rd=new FileReader();rd.onload=function(){var im=new Image();im.onload=function(){try{var c=document.createElement('canvas'),n=240,s=Math.min(im.width,im.height);c.width=c.height=n;c.getContext('2d').drawImage(im,(im.width-s)/2,(im.height-s)/2,s,s,0,0,n,n);S.profile.photo=c.toDataURL('image/jpeg',0.82);save();render()}catch(e){toast('Could not use that image')}};im.onerror=function(){toast('Could not read that image')};im.src=rd.result};rd.readAsDataURL(f)}
-function rmPhoto(){syncMain();S.profile.photo='';save();render()}
+function pickPhoto(inp){var f=inp.files&&inp.files[0];if(!f)return;syncMain();var rd=new FileReader();rd.onload=function(){var im=new Image();im.onload=function(){try{var c=document.createElement('canvas'),n=240,s=Math.min(im.width,im.height);c.width=c.height=n;c.getContext('2d').drawImage(im,(im.width-s)/2,(im.height-s)/2,s,s,0,0,n,n);S.profile.photo=c.toDataURL('image/jpeg',0.82);save();render();photoUp(S.profile.photo)}catch(e){toast('Could not use that image')}};im.onerror=function(){toast('Could not read that image')};im.src=rd.result};rd.readAsDataURL(f)}
+function rmPhoto(){syncMain();S.profile.photo='';S.profile.photoPath='';save();render();photoDel()}
 function profileForm(){var r=S.profile,n=pname(UID);
 return '<h1>'+tx('profile')+'</h1><p class="sub">'+(r.headline?'This is what clients see when they review your proposals.':'Required before you can send proposals. You can browse jobs without one.')+'</p>'
 +sec('Profile photo','A clear headshot builds trust.','<div class="row" style="justify-content:flex-start;gap:14px">'+avatar(r,n,72)+'<div><label class="fbtn">Upload photo<input type="file" accept="image/*" onchange="pickPhoto(this)"></label><label class="fbtn">Take photo<input type="file" accept="image/*" capture="user" onchange="pickPhoto(this)"></label><div class="note" style="margin:0">On a phone, Take photo opens your camera.</div>'+(r.photo?'<button class="link" style="margin:6px 0 0" onclick="rmPhoto()">Remove photo</button>':'')+'</div></div>')
@@ -367,7 +367,7 @@ return '<h1>'+tx('profile')+'</h1><p class="sub">'+(r.headline?'This is what cli
 +sec('Portfolio','Tasks you have completed on Quinqidle or elsewhere.',items(r,'portfolio',true)+addForm('pf','e.g. Rebrand for a coffee shop','What you did and the result'))
 +sec('Experience and credentials','Jobs, education, certificates and awards.',items(r,'exp',true)+addForm('ex','e.g. Senior Designer, Studio North (2021–2024)','Details, or the certificate issuer and year'))
 +'<div class="row" style="justify-content:flex-start"><button class="btn" onclick="saveProfile()">Save profile</button><button class="btn ghost" onclick="syncMain();save();pview=\'me\';render()">Preview</button></div>'}
-function saveProfile(){syncMain();var r=S.profile;if(!r.name||!r.headline){toast('Add your name and a profile title');return}save();toast('Profile saved');pview=UID;render();scrollTo(0,0)}
+function saveProfile(){syncMain();var r=S.profile;if(!r.name||!r.headline){toast('Add your name and a profile title');return}save();profPush().then(function(ok){if(ok===false)toast('We couldn’t save your profile online. Check your connection and tap Save again.')});toast('Profile saved');pview=UID;render();scrollTo(0,0)}
 
 var mopen=false,rv=5,rvt='';
 var LANGS=['English','Swahili','French','Spanish','German','Arabic','Portuguese','Chinese','Hindi','Japanese'];
@@ -463,7 +463,7 @@ function sbSess(){try{return JSON.parse(localStorage.getItem(SBKEY))}catch(e){re
 function sbSave(v){try{if(v)localStorage.setItem(SBKEY,JSON.stringify(v));else localStorage.removeItem(SBKEY)}catch(e){}}
 function sbStore(b,email){var u=b.user||{},m=u.user_metadata||{},o=sbSess()||{},same=o.uid&&u.id&&o.uid===u.id;
  sbSave({email:email,uid:u.id||o.uid,name:m.name||o.name,role:same?(o.role||m.role||'client'):(u.id?(m.role||'client'):(o.role||'client')),access_token:b.access_token,refresh_token:b.refresh_token,expires_at:Math.floor(Date.now()/1000)+(b.expires_in||3600)})}
-function sbReq(method,path,body,tok){var h={'Content-Type':'application/json',apikey:SUBCFG.SUPABASE_ANON_KEY};if(tok)h.Authorization='Bearer '+tok;var o={method:method,headers:h};if(body&&method!=='GET')o.body=JSON.stringify(body);
+function sbReq(method,path,body,tok){var h={'Content-Type':'application/json',apikey:SUBCFG.SUPABASE_ANON_KEY};h.Authorization='Bearer '+(tok||SUBCFG.SUPABASE_ANON_KEY);var o={method:method,headers:h};if(body&&method!=='GET')o.body=JSON.stringify(body);
  return fetch(SUBCFG.SUPABASE_URL.replace(/\/$/,'')+path,o).then(function(r){return r.json().catch(function(){return {}}).then(function(j){return {ok:r.ok,status:r.status,body:j}})})}
 function sbPost(path,body,tok){return sbReq('POST',path,body,tok)}
 function sbToken(){var x=sbSess();if(!x)return Promise.resolve(null);if(ME&&x.email!==subEmail())return Promise.resolve(null);
@@ -690,7 +690,7 @@ function doLoginLocal(){if(busy)return;var e=normE($('#le').value),p=$('#lp').va
 var f=fl(e);if(f.n>=5&&Date.now()-f.t>=30000)f.n=0;if(f.n>=5){aerr='Too many attempts. Wait 30 seconds and try again.';return render()}
 var u=findU(e);busy=true;
 (u?hashPw(p,u.salt):hashPw(p,b64(newSalt())).then(function(){return null})).then(function(h){busy=false;if(u&&h&&same(h,u.hash)){f.n=0;AUTH.session=u.id;asave();enter(u)}else{f.n++;f.t=Date.now();aerr='Incorrect email or password.';render()}}).catch(function(){busy=false;aerr='Something went wrong. Please try again.';render()})}
-function enter(u){ME=u;UID=u.id;role=u.role;setTimeout(subSync,0);if(!S.profiles[UID])S.profiles[UID]=newProf(u.name);S.profile=S.profiles[UID];tab=role==='client'?'jobs':'find';view=null;pview=null;chatView=null;mopen=false;ecs=0;aerr='';render();scrollTo(0,0)}
+function enter(u){ME=u;UID=u.id;role=u.role;setTimeout(subSync,0);setTimeout(profLoad,0);if(!S.profiles[UID])S.profiles[UID]=newProf(u.name);S.profile=S.profiles[UID];tab=role==='client'?'jobs':'find';view=null;pview=null;chatView=null;mopen=false;ecs=0;aerr='';render();scrollTo(0,0)}
 function setMode(r){role=r;ME.role=r;asave();var sx=sbSess();if(sx){sx.role=r;sbSave(sx)}tab=r==='client'?'jobs':'find';view=null;pview=null;chatView=null;ecs=0;render();scrollTo(0,0)}
 function logoutLocal(){sbSave(null);pst={step:'choose',plan:null,inv:null,err:'',msg:'',busy:false,wallet:'',tx:''};AUTH.session=null;asave();save();ME=null;UID=null;S.profile=null;pend=null;scr='home';aerr='';ecs=0;chatView=null;pview=null;view=null;tab='jobs';render();scrollTo(0,0)}
 function accountView(){var h='<h1>'+tx('account')+'</h1><p class="sub">Manage how you sign in.</p><div class="card"><b>'+esc(ME.name)+'</b><div class="note" style="margin:0">Use the switch at the top to move between Client and Freelancer.</div></div>';
@@ -706,6 +706,44 @@ if(findU(e)){aerr='That email address is already used by another account.';retur
 if(!p){aerr='Enter your current password to confirm.';return render()}
 busy=true;hashPw(p,ME.salt).then(function(h){busy=false;if(!same(h,ME.hash)){aerr='Incorrect password.';return render()}pend={kind:'email',newEmail:e,code:code6(),exp:Date.now()+6e5,tries:0,sent:Date.now()};otpMail(e);ecs=2;aerr='';render()}).catch(function(){busy=false;aerr='Something went wrong. Please try again.';render()})}
 function finishEmailLocal(){ME.email=pend.newEmail;asave();pend=null;ecs=0;aerr='';toast('Email address updated');render()}
+/* ---------- Profiles on Supabase (follow the account across devices) ---------- */
+var profSeen={},profBatch=[],profTimer=0,UUID_RE=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function csv(x){return String(x||'').split(',').map(function(v){return v.trim()}).filter(Boolean)}
+function phUrl(path,v){return SUBCFG.SUPABASE_URL.replace(/\/$/,'')+'/storage/v1/object/public/avatars/'+path+(v?'?v='+encodeURIComponent(v):'')}
+function fromDb(p,items){var r=newProf(p.name||'');r.name=p.name||'';r.headline=p.headline||'';r.bio=p.bio||'';r.skills=(p.skills||[]).join(', ');r.langs=(p.langs||[]).join(', ');r.tools=(p.tools||[]).join(', ');r.avail=p.avail||'';r.hours=p.hours||'';
+ r.rate=p.rate==null?'':Number(p.rate);r.minp=p.minp==null?'':Number(p.minp);r.photoPath=p.photo_path||'';r.photo=p.photo_path?phUrl(p.photo_path,p.updated_at):'';
+ (items||[]).forEach(function(x){var o={id:S.next++,title:x.title,desc:x.description||''};if(x.kind==='service'){o.price=Number(x.price)||0;r.services.push(o)}else if(x.kind==='portfolio')r.portfolio.push(o);else r.exp.push(o)});return r}
+function softRender(){var a=document.activeElement,t=a&&a.tagName;if(t==='INPUT'||t==='TEXTAREA'||t==='SELECT')return;render()} /* never wipe what someone is typing */
+function dataToBlob(d){var m=/^data:([^;]+);base64,(.*)$/.exec(d||'');if(!m)return null;var b=atob(m[2]),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return new Blob([a],{type:m[1]})}
+function sbUpload(path,blob,tok){return fetch(SUBCFG.SUPABASE_URL.replace(/\/$/,'')+'/storage/v1/object/avatars/'+path,{method:'POST',headers:{apikey:SUBCFG.SUPABASE_ANON_KEY,Authorization:'Bearer '+tok,'Content-Type':blob.type,'x-upsert':'true','cache-control':'max-age=3600'},body:blob}).then(function(r){return r.ok})}
+function photoUp(d){if(!subCfgOk()||!UID)return;var b=dataToBlob(d),u=UID;if(!b)return;
+ sbToken().then(function(t){if(!t)throw 0;return sbUpload(u+'/avatar.jpg',b,t)}).then(function(ok){if(!ok)throw 0;if(S.profile&&UID===u){S.profile.photoPath=u+'/avatar.jpg';save()}}).catch(function(){toast('Photo kept here, but it couldn’t be uploaded. Try again.')})}
+function photoDel(){if(!subCfgOk()||!UID)return;var u=UID;sbToken().then(function(t){if(t)return sbReq('DELETE','/storage/v1/object/avatars/'+u+'/avatar.jpg',null,t)}).catch(function(){})}
+function profPush(){if(!subCfgOk()||!UID||!S.profile)return Promise.resolve(null);var r=S.profile;
+ var P={name:r.name,headline:r.headline,bio:r.bio,skills:csv(r.skills),langs:csv(r.langs),tools:csv(r.tools),avail:r.avail||'',hours:r.hours||'',rate:r.rate===''?null:r.rate,minp:r.minp===''?null:r.minp,photo_path:r.photoPath||null};
+ var I=[];(r.services||[]).forEach(function(x){I.push({kind:'service',title:x.title,description:x.desc||'',price:x.price||null})});
+ (r.portfolio||[]).forEach(function(x){I.push({kind:'portfolio',title:x.title,description:x.desc||''})});
+ (r.exp||[]).forEach(function(x){I.push({kind:'experience',title:x.title,description:x.desc||''})});
+ return sbToken().then(function(t){if(!t)return false;return sbReq('POST','/rest/v1/rpc/save_my_profile',{p:P,items:I},t).then(function(x){return x.ok})}).catch(function(){return false})}
+function profLoad(){if(!subCfgOk()||!UID)return;var id=UID;
+ sbToken().then(function(t){if(!t)return;return Promise.all([sbReq('GET','/rest/v1/profiles?id=eq.'+id+'&select=*',null,t),sbReq('GET','/rest/v1/profile_items?profile_id=eq.'+id+'&select=kind,title,description,price&order=id.asc',null,t)])}).then(function(a){
+  if(!a||UID!==id||!a[0].ok||!a[0].body||!a[0].body[0])return;var p=a[0].body[0],local=S.profiles[id];
+  if(!p.headline&&local&&local.headline){profMigrate(local);return}      /* a profile made on this device before profiles went online */
+  if(!p.headline&&!(a[1].body||[]).length&&local&&!local.headline){if(p.name&&!local.name)local.name=p.name;return}
+  S.profiles[id]=fromDb(p,a[1].body||[]);S.profile=S.profiles[id];save();softRender()}).catch(function(){})}
+function profMigrate(local){var d=local.photo,b=d&&d.indexOf('data:')===0?dataToBlob(d):null,u=UID;
+ var go=function(){S.profile=local;profPush().then(function(ok){if(ok)toast('Your profile is now saved to your account')})};
+ if(!b){local.photo=local.photoPath?local.photo:'';return go()}
+ sbToken().then(function(t){if(!t)throw 0;return sbUpload(u+'/avatar.jpg',b,t)}).then(function(ok){if(ok)local.photoPath=u+'/avatar.jpg'}).catch(function(){}).then(go)}
+function profQ(id){if(!subCfgOk()||!id||id===UID||profSeen[id]||!UUID_RE.test(id))return;profSeen[id]=1;profBatch.push(id);clearTimeout(profTimer);profTimer=setTimeout(profFlush,60)}
+function profFlush(){var ids=profBatch.splice(0,50);if(!ids.length)return;var inl='('+ids.join(',')+')';
+ Promise.all([sbReq('GET','/rest/v1/profiles?id=in.'+inl+'&select=*'),sbReq('GET','/rest/v1/profile_items?profile_id=in.'+inl+'&select=profile_id,kind,title,description,price&order=id.asc')]).then(function(a){
+  if(!a[0].ok||!Array.isArray(a[0].body))return;var items=Array.isArray(a[1].body)?a[1].body:[],changed=false;
+  a[0].body.forEach(function(p){var mine=items.filter(function(x){return x.profile_id===p.id}),n=fromDb(p,mine),o=S.profiles[p.id];
+   if(!o||JSON.stringify(strip(o))!==JSON.stringify(strip(n))){S.profiles[p.id]=n;changed=true}});
+  if(changed){save();softRender()}}).catch(function(){})}
+function strip(r){var c=JSON.parse(JSON.stringify(r));['services','portfolio','exp'].forEach(function(k){(c[k]||[]).forEach(function(x){delete x.id})});return c}
+
 /* ---------- Accounts and sessions on Supabase (works on any device) ---------- */
 function userFrom(u){var m=(u&&u.user_metadata)||{},e=String((u&&u.email)||'').toLowerCase();return{id:u.id,email:e,name:m.name||e.split('@')[0],role:m.role||'client'}}
 function pwMsg(){return 'That password isn’t accepted. Use at least 8 characters, with a letter and a number.'}
