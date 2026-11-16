@@ -461,12 +461,18 @@ function subActive(){var x=subGet();return !!(x&&new Date(x.expires_at).getTime(
 function fdate(d){try{return new Date(d).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'})}catch(e){return ''}}
 function sbSess(){try{return JSON.parse(localStorage.getItem(SBKEY))}catch(e){return null}}
 function sbSave(v){try{if(v)localStorage.setItem(SBKEY,JSON.stringify(v));else localStorage.removeItem(SBKEY)}catch(e){}}
-function sbStore(b,email){sbSave({email:email,access_token:b.access_token,refresh_token:b.refresh_token,expires_at:Math.floor(Date.now()/1000)+(b.expires_in||3600)})}
-function sbPost(path,body,tok){var h={'Content-Type':'application/json',apikey:SUBCFG.SUPABASE_ANON_KEY};if(tok)h.Authorization='Bearer '+tok;
- return fetch(SUBCFG.SUPABASE_URL.replace(/\/$/,'')+path,{method:'POST',headers:h,body:JSON.stringify(body||{})}).then(function(r){return r.json().catch(function(){return {}}).then(function(j){return {ok:r.ok,status:r.status,body:j}})})}
-function sbToken(){var x=sbSess();if(!x||x.email!==subEmail())return Promise.resolve(null);
+function sbStore(b,email){var u=b.user||{},m=u.user_metadata||{},o=sbSess()||{},same=o.uid&&u.id&&o.uid===u.id;
+ sbSave({email:email,uid:u.id||o.uid,name:m.name||o.name,role:same?(o.role||m.role||'client'):(u.id?(m.role||'client'):(o.role||'client')),access_token:b.access_token,refresh_token:b.refresh_token,expires_at:Math.floor(Date.now()/1000)+(b.expires_in||3600)})}
+function sbReq(method,path,body,tok){var h={'Content-Type':'application/json',apikey:SUBCFG.SUPABASE_ANON_KEY};if(tok)h.Authorization='Bearer '+tok;var o={method:method,headers:h};if(body&&method!=='GET')o.body=JSON.stringify(body);
+ return fetch(SUBCFG.SUPABASE_URL.replace(/\/$/,'')+path,o).then(function(r){return r.json().catch(function(){return {}}).then(function(j){return {ok:r.ok,status:r.status,body:j}})})}
+function sbPost(path,body,tok){return sbReq('POST',path,body,tok)}
+function sbToken(){var x=sbSess();if(!x)return Promise.resolve(null);if(ME&&x.email!==subEmail())return Promise.resolve(null);
  if(x.expires_at>Date.now()/1000+60)return Promise.resolve(x.access_token);
- return sbPost('/auth/v1/token?grant_type=refresh_token',{refresh_token:x.refresh_token}).then(function(r){if(!r.ok||!r.body.access_token){sbSave(null);return null}sbStore(r.body,x.email);return r.body.access_token})}
+ return sbPost('/auth/v1/token?grant_type=refresh_token',{refresh_token:x.refresh_token}).then(function(r){
+  if(r.ok&&r.body.access_token){sbStore(r.body,x.email);return r.body.access_token}
+  if(r.status>=400&&r.status<500){sbSave(null);if(ME)sbLost()}   /* session is really gone: send the user to log in */
+  return null})}
+function sbLost(){toast('Please log in again');logout()}
 function subSync(){if(!subCfgOk()||!ME)return;
  sbToken().then(function(t){if(!t)return;return sbPost('/rest/v1/rpc/my_subscription',{},t).then(function(r){if(!r.ok||!r.body)return;var before=JSON.stringify(subGet());subSet(r.body.active?{plan:r.body.plan,expires_at:r.body.expires_at}:(r.body.expires_at?{plan:r.body.plan,expires_at:r.body.expires_at}:null));if(JSON.stringify(subGet())!==before)render()})}).catch(function(){})}
 function needSub(){if(subActive())return false;toast('Subscribe to post jobs and send proposals');go('plan');return true}
@@ -609,11 +615,13 @@ function pwOk(p){return p.length>=8&&/[A-Za-z]/.test(p)&&/[0-9]/.test(p)}
 function newProf(n){return{name:n,headline:'',rate:'',skills:'',bio:'',photo:'',avail:'',hours:'',minp:'',langs:'',tools:'',services:[],portfolio:[],exp:[]}}
 function sendEmail(to,subject,text){
  pend.sb=subCfgOk();
- if(pend.sb){/* real email: Supabase emails the one-time code; it is never shown on screen */
-  pend.mail={to:to,subject:subject,text:''};var P=pend;
-  sbPost('/auth/v1/otp',{email:String(to).toLowerCase(),create_user:true}).then(function(r){if(!r.ok&&pend===P){aerr=r.status===429?'Too many emails sent. Please wait a few minutes and try again.':'We couldn’t send the email. Check the address and try again shortly.';render()}}).catch(function(){if(pend===P){aerr='Network problem. Please try again.';render()}});
+ if(pend.sb){/* real email through Supabase; the code is never shown on screen */
+  pend.mail={to:to,subject:subject,text:''};var P=pend,em=String(to).toLowerCase(),k=pend.kind,req;
+  if(k==='email')req=sbToken().then(function(t){return sbReq('POST','/auth/v1/resend',{type:'email_change',email:em},t)});
+  else req=sbPost('/auth/v1/otp',{email:em,create_user:k==='signup',data:k==='signup'?{name:pend.name,role:pend.role}:undefined});
+  req.then(function(r){if(!r.ok&&pend===P&&!(k==='reset'&&r.status!==429)){aerr=r.status===429?'Too many emails sent. Please wait a few minutes and try again.':'We couldn’t send the email. Check the address and try again shortly.';render()}}).catch(function(){if(pend===P){aerr='Network problem. Please try again.';render()}});
   return}
- /* Demo only (no backend configured): the message is shown on screen. */
+ /* no backend configured: the message is shown on screen */
  pend.mail={to:to,subject:subject,text:text}}
 function otpMail(to){sendEmail(to,'Your Quinqidle verification code','Your code is '+pend.code+'. It expires in 10 minutes. If you did not request it, ignore this message.')}
 function field(id,label,type,val,extra){return '<label for="'+id+'">'+label+'</label><input id="'+id+'" type="'+type+'" value="'+esc(val||'')+'" '+(extra||'')+'>'}
@@ -637,7 +645,7 @@ return h+'<div class="grid2">'+js.map(function(j){return '<div class="card" styl
 function renderAuth(){var cl=document.body.classList,site=(scr==='home'||scr==='browse');if(cl){cl.remove('chat');if(site)cl.add('site');else cl.remove('site')}$('#nav').innerHTML='';
 if(site){$('#seg').innerHTML='<div class="hr"><button class="btn ghost sm" onclick="scr=\'login\';aerr=\'\';render()">'+tx('login')+'</button><button class="btn sm" onclick="scr=\'signup\';aerr=\'\';render()">Get started</button></div>';$('#app').innerHTML=(scr==='home'?homeView():browseView())+prefsBar();return}
 $('#seg').innerHTML='';var lg='<div style="text-align:center;margin:4px 0 14px"><span class="logo lg" role="img" aria-label="Quinqidle logo"></span></div>';var h=scr==='signup'?signupView():scr==='forgot'?forgotView():(scr==='verify'&&pend)?verifyView():(scr==='newpw'&&pend&&pend.verified)?newpwView():loginView();$('#app').innerHTML=lg+(SECURE?'':'<p class="err">Secure password hashing is not available in this browser, so accounts are disabled.</p>')+h+prefsBar()}
-function doSignup(){if(busy)return;var n=$('#sn').value.trim(),e=normE($('#se').value),r='client',p=$('#sp').value,c=$('#sc').value;ad={name:n,email:e,role:r};aerr='';
+function doSignupLocal(){if(busy)return;var n=$('#sn').value.trim(),e=normE($('#se').value),r='client',p=$('#sp').value,c=$('#sc').value;ad={name:n,email:e,role:r};aerr='';
 if(!SECURE)return;
 if(!n){aerr='Enter your name.';return render()}
 if(!EMAIL_RE.test(e)){aerr='Enter a valid email address.';return render()}
@@ -651,13 +659,13 @@ if(Date.now()>pend.exp){aerr='That code has expired. Tap Resend code.';return re
 if(pend.tries>=5){aerr='Too many attempts. Tap Resend code to get a new one.';return render()}
 if(!/^[0-9]{6}$/.test(v)){aerr='Enter the 6-digit code.';return render()}
 if(pend.sb){if(busy)return;busy=true;var em=pto(),P=pend;
- sbPost('/auth/v1/verify',{type:'email',email:em,token:v}).then(function(r){busy=false;if(pend!==P)return;if(r.ok&&r.body.access_token){sbStore(r.body,String(em).toLowerCase());vdone()}else{pend.tries++;aerr='That code is not correct or has expired. Tap Resend code for a new one.';render()}}).catch(function(){busy=false;aerr='Network problem. Please try again.';render()});return}
+ sbPost('/auth/v1/verify',{type:pend.kind==='email'?'email_change':'email',email:em,token:v}).then(function(r){busy=false;if(pend!==P)return;if(r.ok&&r.body.access_token){sbStore(r.body,String(em).toLowerCase());vdone()}else{pend.tries++;aerr='That code is not correct or has expired. Tap Resend code for a new one.';render()}}).catch(function(){busy=false;aerr='Network problem. Please try again.';render()});return}
 if(!same(v,pend.code)){pend.tries++;aerr='That code is not correct. '+(5-pend.tries)+' attempts left.';return render()}
 vdone()}
 function vdone(){aerr='';if(pend.kind==='signup')finishSignup();else if(pend.kind==='reset'){pend.verified=true;pend.vexp=Date.now()+6e5;scr='newpw';render()}else finishEmail()}
 function resend(){if(!pend)return;if(Date.now()-pend.sent<30000){aerr='Please wait a few seconds before requesting another code.';return render()}pend.code=code6();pend.exp=Date.now()+6e5;pend.tries=0;pend.sent=Date.now();otpMail(pto());aerr='';toast('New code sent');render()}
 function cancelVerify(){if(pend&&pend.kind==='signup')scr='signup';else if(pend&&pend.kind==='reset')scr='forgot';else ecs=0;pend=null;aerr='';render()}
-function finishSignup(){var p=pend;if(findU(p.email)){aerr='An account with this email already exists.';pend=null;scr='login';return render()}
+function finishSignupLocal(){var p=pend;if(findU(p.email)){aerr='An account with this email already exists.';pend=null;scr='login';return render()}
 var u={id:uid(),email:p.email,name:p.name,role:p.role,salt:p.salt,hash:p.hash};
 AUTH.users.push(u);AUTH.session=u.id;asave();
 S.names[u.id]=u.name;S.profiles[u.id]=newProf(u.name);
@@ -667,39 +675,99 @@ function pto(){return pend.kind==='email'?pend.newEmail:pend.email}
 function keepEmail(){var e=$('#le');if(e)ad.email=normE(e.value)}
 function forgotView(){return '<h1>Reset your password</h1><p class="sub">Enter your email and we will send a 6-digit code.</p><div class="card">'+errBox()+field('fe','Email','email',ad.email,'autocomplete="email" inputmode="email"')+'<p></p><button class="btn" style="width:100%" onclick="startReset()">Send code</button></div><p class="sub" style="text-align:center"><button class="link" style="margin:0" onclick="scr=\'login\';aerr=\'\';render()">Back to log in</button></p>'}
 function newpwView(){return '<h1>Create a new password</h1><p class="sub">Your code was verified. Choose a new password for <b>'+esc(pend.email)+'</b>.</p><div class="card">'+errBox()+pwField('np','New password','new-password')+'<p class="note">At least 8 characters, with a letter and a number.</p>'+pwField('nc','Confirm new password','new-password')+'<p></p><button class="btn" style="width:100%" onclick="doReset()">Save password</button></div><p class="sub" style="text-align:center"><button class="link" style="margin:0" onclick="pend=null;scr=\'login\';aerr=\'\';render()">Cancel</button></p>'}
-function startReset(){if(busy)return;var e=normE($('#fe').value);ad.email=e;aerr='';
+function startResetLocal(){if(busy)return;var e=normE($('#fe').value);ad.email=e;aerr='';
 if(!EMAIL_RE.test(e)){aerr='Enter a valid email address.';return render()}
 pend={kind:'reset',email:e,exists:!!findU(e),code:code6(),exp:Date.now()+6e5,tries:0,sent:Date.now(),verified:false};
 sendEmail(e,'Your Quinqidle password reset code','Your code is '+pend.code+'. It expires in 10 minutes. If you did not ask to reset your password, ignore this message.');scr='verify';render()}
-function doReset(){if(busy||!pend||!pend.verified)return;var p=$('#np').value,c=$('#nc').value;aerr='';
+function doResetLocal(){if(busy||!pend||!pend.verified)return;var p=$('#np').value,c=$('#nc').value;aerr='';
 if(Date.now()>pend.vexp){pend=null;scr='forgot';aerr='This reset expired. Request a new code.';return render()}
 if(!pwOk(p)){aerr='Use at least 8 characters, with a letter and a number.';return render()}
 if(p!==c){aerr='The passwords do not match.';return render()}
 var em=pend.email,u=findU(em);busy=true;var salt=b64(newSalt());
 hashPw(p,salt).then(function(h){busy=false;if(u){u.salt=salt;u.hash=h;asave();fails[em]={n:0,t:0}}pend=null;scr='login';ad.email=em;aerr='';render();toast('Password updated. Log in with your new password.')}).catch(function(){busy=false;aerr='Something went wrong. Please try again.';render()})}
 function fl(e){return fails[e]||(fails[e]={n:0,t:0})}
-function doLogin(){if(busy)return;var e=normE($('#le').value),p=$('#lp').value;ad.email=e;aerr='';if(!SECURE)return;
+function doLoginLocal(){if(busy)return;var e=normE($('#le').value),p=$('#lp').value;ad.email=e;aerr='';if(!SECURE)return;
 var f=fl(e);if(f.n>=5&&Date.now()-f.t>=30000)f.n=0;if(f.n>=5){aerr='Too many attempts. Wait 30 seconds and try again.';return render()}
 var u=findU(e);busy=true;
 (u?hashPw(p,u.salt):hashPw(p,b64(newSalt())).then(function(){return null})).then(function(h){busy=false;if(u&&h&&same(h,u.hash)){f.n=0;AUTH.session=u.id;asave();enter(u)}else{f.n++;f.t=Date.now();aerr='Incorrect email or password.';render()}}).catch(function(){busy=false;aerr='Something went wrong. Please try again.';render()})}
 function enter(u){ME=u;UID=u.id;role=u.role;setTimeout(subSync,0);if(!S.profiles[UID])S.profiles[UID]=newProf(u.name);S.profile=S.profiles[UID];tab=role==='client'?'jobs':'find';view=null;pview=null;chatView=null;mopen=false;ecs=0;aerr='';render();scrollTo(0,0)}
-function setMode(r){role=r;ME.role=r;asave();tab=r==='client'?'jobs':'find';view=null;pview=null;chatView=null;ecs=0;render();scrollTo(0,0)}
-function logout(){sbSave(null);pst={step:'choose',plan:null,inv:null,err:'',msg:'',busy:false,wallet:'',tx:''};AUTH.session=null;asave();save();ME=null;UID=null;S.profile=null;pend=null;scr='home';aerr='';ecs=0;chatView=null;pview=null;view=null;tab='jobs';render();scrollTo(0,0)}
+function setMode(r){role=r;ME.role=r;asave();var sx=sbSess();if(sx){sx.role=r;sbSave(sx)}tab=r==='client'?'jobs':'find';view=null;pview=null;chatView=null;ecs=0;render();scrollTo(0,0)}
+function logoutLocal(){sbSave(null);pst={step:'choose',plan:null,inv:null,err:'',msg:'',busy:false,wallet:'',tx:''};AUTH.session=null;asave();save();ME=null;UID=null;S.profile=null;pend=null;scr='home';aerr='';ecs=0;chatView=null;pview=null;view=null;tab='jobs';render();scrollTo(0,0)}
 function accountView(){var h='<h1>'+tx('account')+'</h1><p class="sub">Manage how you sign in.</p><div class="card"><b>'+esc(ME.name)+'</b><div class="note" style="margin:0">Use the switch at the top to move between Client and Freelancer.</div></div>';
 if(ecs===2&&pend)return h+verifyView();
 h+='<div class="card"><h2>Email address</h2><p style="margin:0 0 8px">'+esc(ME.email)+'</p>';
 if(ecs===1)h+=errBox()+field('ne','New email address','email','','autocomplete="email" inputmode="email"')+pwField('cp','Re-enter your password to confirm','current-password')+'<p></p><div class="row" style="justify-content:flex-start"><button class="btn" onclick="startEmail()">Send code</button><button class="btn ghost" onclick="ecs=0;aerr=\'\';render()">Cancel</button></div>';
 else h+='<button class="btn ghost" onclick="ecs=1;aerr=\'\';render()">Change email</button>';
 return h+'</div>'+subCard()+prefsBar()+'<button class="btn ghost" style="width:100%" onclick="logout()">'+tx('logout')+'</button>'}
-function startEmail(){if(busy)return;var e=normE($('#ne').value),p=$('#cp').value;aerr='';
+function startEmailLocal(){if(busy)return;var e=normE($('#ne').value),p=$('#cp').value;aerr='';
 if(!EMAIL_RE.test(e)){aerr='Enter a valid email address.';return render()}
 if(e===ME.email){aerr='That is already your email address.';return render()}
 if(findU(e)){aerr='That email address is already used by another account.';return render()}
 if(!p){aerr='Enter your current password to confirm.';return render()}
 busy=true;hashPw(p,ME.salt).then(function(h){busy=false;if(!same(h,ME.hash)){aerr='Incorrect password.';return render()}pend={kind:'email',newEmail:e,code:code6(),exp:Date.now()+6e5,tries:0,sent:Date.now()};otpMail(e);ecs=2;aerr='';render()}).catch(function(){busy=false;aerr='Something went wrong. Please try again.';render()})}
-function finishEmail(){ME.email=pend.newEmail;asave();pend=null;ecs=0;aerr='';toast('Email address updated');render()}
+function finishEmailLocal(){ME.email=pend.newEmail;asave();pend=null;ecs=0;aerr='';toast('Email address updated');render()}
+/* ---------- Accounts and sessions on Supabase (works on any device) ---------- */
+function userFrom(u){var m=(u&&u.user_metadata)||{},e=String((u&&u.email)||'').toLowerCase();return{id:u.id,email:e,name:m.name||e.split('@')[0],role:m.role||'client'}}
+function pwMsg(){return 'That password isn’t accepted. Use at least 8 characters, with a letter and a number.'}
+function doLogin(){return subCfgOk()?doLoginSb():doLoginLocal()}
+function doSignup(){return subCfgOk()?doSignupSb():doSignupLocal()}
+function finishSignup(){return subCfgOk()?finishSignupSb():finishSignupLocal()}
+function startReset(){return subCfgOk()?startResetSb():startResetLocal()}
+function doReset(){return subCfgOk()?doResetSb():doResetLocal()}
+function startEmail(){return subCfgOk()?startEmailSb():startEmailLocal()}
+function finishEmail(){if(!subCfgOk())return finishEmailLocal();ME.email=pend.newEmail;pend=null;ecs=0;aerr='';toast('Email address updated');render()}
+function logout(){var x=sbSess();if(x&&x.access_token&&subCfgOk())sbReq('POST','/auth/v1/logout',{},x.access_token).catch(function(){});logoutLocal()}
+function doLoginSb(){if(busy)return;var e=normE($('#le').value),p=$('#lp').value;ad.email=e;aerr='';
+ var f=fl(e);if(f.n>=5&&Date.now()-f.t>=30000)f.n=0;if(f.n>=5){aerr='Too many attempts. Wait 30 seconds and try again.';return render()}
+ if(!EMAIL_RE.test(e)||!p){aerr='Enter your email and password.';return render()}
+ busy=true;sbPost('/auth/v1/token?grant_type=password',{email:e,password:p}).then(function(r){busy=false;
+  if(r.ok&&r.body.access_token&&r.body.user){f.n=0;sbStore(r.body,e);var u=userFrom(r.body.user);u.role=sbSess().role||u.role;enter(u)}
+  else{f.n++;f.t=Date.now();aerr=r.status===429?'Too many attempts. Please wait a moment and try again.':'Incorrect email or password.';render()}
+ }).catch(function(){busy=false;aerr='Network problem. Please try again.';render()})}
+function doSignupSb(){if(busy)return;var n=$('#sn').value.trim(),e=normE($('#se').value),r='client',p=$('#sp').value,c=$('#sc').value;ad={name:n,email:e,role:r};aerr='';
+ if(!n){aerr='Enter your name.';return render()}
+ if(!EMAIL_RE.test(e)){aerr='Enter a valid email address.';return render()}
+ if(!pwOk(p)){aerr='Use at least 8 characters, with a letter and a number.';return render()}
+ if(p!==c){aerr='The passwords do not match.';return render()}
+ pend={kind:'signup',name:n,email:e,role:r,password:p,exp:Date.now()+6e5,tries:0,sent:Date.now()};otpMail(e);scr='verify';aerr='';render()}
+function finishSignupSb(){var p=pend;if(!p||busy)return;busy=true;
+ sbToken().then(function(t){if(!t)throw new Error('no session');return sbReq('PUT','/auth/v1/user',{password:p.password,data:{name:p.name,role:p.role}},t)}).then(function(r){busy=false;
+  if(!r.ok||!r.body.id){pend=null;scr='signup';aerr=pwMsg();return render()}
+  var u=userFrom(r.body),o=sbSess()||{};o.uid=u.id;o.name=u.name;o.role=u.role;sbSave(o);
+  S.names[u.id]=u.name;if(!S.profiles[u.id])S.profiles[u.id]=newProf(u.name);
+  pend=null;aerr='';ad={name:'',email:'',role:'client'};enter(u);save();toast('Account created')
+ }).catch(function(){busy=false;pend=null;scr='signup';aerr='Something went wrong. Please try again.';render()})}
+function startResetSb(){if(busy)return;var e=normE($('#fe').value);ad.email=e;aerr='';
+ if(!EMAIL_RE.test(e)){aerr='Enter a valid email address.';return render()}
+ pend={kind:'reset',email:e,exp:Date.now()+6e5,tries:0,sent:Date.now(),verified:false};otpMail(e);scr='verify';render()}
+function doResetSb(){if(busy||!pend||!pend.verified)return;var p=$('#np').value,c=$('#nc').value;aerr='';
+ if(Date.now()>pend.vexp){pend=null;scr='forgot';aerr='This reset expired. Request a new code.';return render()}
+ if(!pwOk(p)){aerr='Use at least 8 characters, with a letter and a number.';return render()}
+ if(p!==c){aerr='The passwords do not match.';return render()}
+ var em=pend.email;busy=true;
+ sbToken().then(function(t){if(!t)throw new Error('no session');return sbReq('PUT','/auth/v1/user',{password:p},t)}).then(function(r){busy=false;
+  if(!r.ok){aerr=pwMsg();return render()}
+  sbSave(null);pend=null;scr='login';ad.email=em;aerr='';render();toast('Password updated. Log in with your new password.')
+ }).catch(function(){busy=false;aerr='Something went wrong. Please start again.';pend=null;scr='forgot';render()})}
+function startEmailSb(){if(busy)return;var e=normE($('#ne').value),p=$('#cp').value;aerr='';
+ if(!EMAIL_RE.test(e)){aerr='Enter a valid email address.';return render()}
+ if(e===ME.email){aerr='That is already your email address.';return render()}
+ if(!p){aerr='Enter your current password to confirm.';return render()}
+ busy=true;
+ sbPost('/auth/v1/token?grant_type=password',{email:ME.email,password:p}).then(function(r){
+  if(!r.ok||!r.body.access_token){busy=false;aerr='Incorrect password.';render();return}
+  sbStore(r.body,ME.email);
+  return sbReq('PUT','/auth/v1/user',{email:e},r.body.access_token).then(function(r2){busy=false;
+   if(!r2.ok){aerr=r2.status===422?'That email address can’t be used.':'We couldn’t start the change. Please try again.';render();return}
+   pend={kind:'email',newEmail:e,sb:true,exp:Date.now()+6e5,tries:0,sent:Date.now(),mail:{to:e,subject:'',text:''}};ecs=2;aerr='';render()})
+ }).catch(function(){busy=false;aerr='Network problem. Please try again.';render()})}
+
 AUTH=aload();S=load();
-(function(){var u=AUTH.session&&AUTH.users.filter(function(x){return x.id===AUTH.session})[0];if(u)enter(u);else render()})();
+(function(){
+ if(subCfgOk()){var x=sbSess();
+  if(x&&x.uid&&x.email){enter({id:x.uid,email:x.email,name:x.name||x.email.split('@')[0],role:x.role||'client'});sbToken().catch(function(){});return}
+  render();return}
+ var u=AUTH.session&&AUTH.users.filter(function(x){return x.id===AUTH.session})[0];if(u)enter(u);else render()})();
 
 </script>
 </body>
