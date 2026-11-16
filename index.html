@@ -214,7 +214,7 @@ function seed(){var s=seed0();s.jobs=[];s.chats=[];s.profiles={};s.names={};s.v=
 function load(){var s;try{var r=localStorage.getItem(KEY);if(r)s=JSON.parse(r)}catch(e){}if(!s||s.v!==2)s=seed();s.profile=null;s.chats=s.chats||[];s.profiles=s.profiles||{};s.names=s.names||{};
 var SJ=seed0().jobs.map(function(j){return j.title+'|'+j.desc});s.jobs=(s.jobs||[]).filter(function(j){return SJ.indexOf(j.title+'|'+j.desc)<0});
 s.chats=s.chats.filter(function(c){return c.client!=='Jonas Becker'&&c.client!=='Rosa Alvarez'});
-s.jobs.forEach(function(j){j.cat=CATMAP[j.cat]||j.cat});return s}
+s.jobs.forEach(function(j){j.cat=CATMAP[j.cat]||j.cat});if(subCfgOk()&&!s.db){s.jobs=[];s.chats=[];s.db=1}return s}
 function save(){try{if(UID&&S.profile)S.profiles[UID]=S.profile;localStorage.setItem(KEY,JSON.stringify(S,function(k,v){return k==='profile'&&this===S?undefined:v}))}catch(e){}}
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
 function $(s){return document.querySelector(s)}
@@ -260,7 +260,7 @@ var skill='All';
 function jobSkills(j){return j.skills||JSK[j.id]||[]}
 function addSkill(s,id){var i=$('#'+(id||'ps')),a=i.value.split(',').map(function(x){return x.trim()}).filter(Boolean);if(a.some(function(x){return x.toLowerCase()===s.toLowerCase()})){toast(s+' is already added');return}a.push(s);i.value=a.join(', ')}
 function mine(j){return j.props.filter(function(p){return p.by===UID})[0]}
-function hiredP(j){return j.props.filter(function(p){return p.id===j.hired})[0]}
+function hiredP(j){var h=j.props.filter(function(p){return p.id===j.hired})[0];return h||(j.hired&&j.hfree?{id:j.hired,by:j.hfree,price:0,msg:''}:undefined)}
 var LBL={open:'Open',in_progress:'In progress',delivered:'Awaiting approval',paid:'Completed'};
 function toast(m){var t=$('#toast');t.textContent=m;t.className='show';xl();clearTimeout(toast.t);toast.t=setTimeout(function(){t.className=''},2200)}
 function go(k){tab=k;view=null;pview=null;chatView=null;render();scrollTo(0,0)}
@@ -282,7 +282,7 @@ function clientJobs(){
 function postForm(){
  return '<h1>'+tx('post')+'</h1><p class="sub">Describe the work and set a budget. Freelancers will send proposals.</p>'+subBanner()+'<div class="card"><label for="t">Job title</label><input id="t" maxlength="80" placeholder="e.g. Design a pitch deck"><label for="c">Category</label><select id="c">'+CATS.slice(1).map(function(c){return '<option>'+c+'</option>'}).join('')+'</select><label for="b">Budget (USD)</label><input id="b" type="number" inputmode="numeric" min="1" placeholder="500"><label for="js">Skills needed</label><input id="js" placeholder="Pick below or type, separated by commas">'+picker('js')+'<label for="d">Description</label><textarea id="d" placeholder="What needs to be delivered, and by when?"></textarea><p></p><button class="btn" onclick="postJob()">Publish job</button></div>';
 }
-function postJob(){
+function postJobLocal(){
  if(needSub())return;
  var t=$('#t').value.trim(),b=Number($('#b').value),d=$('#d').value.trim();
  if(!t||!(b>0)){toast('Add a title and a budget above $0');return}
@@ -334,11 +334,11 @@ function detail(j){
  }
  return h;
 }
-function propose(id){var jb=J(id);if(!jb||jb.owner===UID){toast('You can’t send a proposal on your own job');return}if(needSub())return;if(!S.profile.headline){toast('Complete your profile first');go('profile');return}var p=Number($('#pp').value),m=$('#pm').value.trim();if(!(p>0)||!m){toast('Add a price and a short message');return}
+function proposeLocal(id){var jb=J(id);if(!jb||jb.owner===UID){toast('You can’t send a proposal on your own job');return}if(needSub())return;if(!S.profile.headline){toast('Complete your profile first');go('profile');return}var p=Number($('#pp').value),m=$('#pm').value.trim();if(!(p>0)||!m){toast('Add a price and a short message');return}
  J(id).props.push({id:S.next++,by:UID,price:p,msg:m});save();toast('Proposal sent');render()}
-function hire(id,pid){var j=J(id);j.hired=pid;j.status='in_progress';save();toast('Freelancer hired');render()}
-function deliver(id){J(id).status='delivered';save();toast('Marked as delivered');render()}
-function approve(id){J(id).status='paid';save();toast('Work approved. Please rate your freelancer.');render();setTimeout(function(){var e=document.querySelector('#rt');if(e&&e.scrollIntoView)e.scrollIntoView({block:'center'})},60)}
+function hireLocal(id,pid){var j=J(id);j.hired=pid;j.status='in_progress';save();toast('Freelancer hired');render()}
+function deliverLocal(id){J(id).status='delivered';save();toast('Marked as delivered');render()}
+function approveLocal(id){J(id).status='paid';save();toast('Work approved. Please rate your freelancer.');render();setTimeout(function(){var e=document.querySelector('#rt');if(e&&e.scrollIntoView)e.scrollIntoView({block:'center'})},60)}
 var pview=null;
 PROFILES['Ana Ruiz'].bio='Product designer with seven years of experience in small-business websites and brand systems.';
 PROFILES['Ana Ruiz'].services=[{id:901,title:'One-page website design',desc:'Figma design with two revision rounds, delivered in 7 days.',price:450}];
@@ -382,12 +382,12 @@ PROFILES['Dev Shah'].reviews=[{by:'Chris Wong',stars:5,text:'Clean code and clea
 PROFILES['Priya Nair'].reviews=[{by:'Sam Okafor',stars:5,text:'Three logo concepts and all were usable.'},{by:'Elena Petrova',stars:4,text:'Good work, slightly late on the first draft.'}];
 PROFILES['Tom Lind'].reviews=[{by:'Rosa Alvarez',stars:5,text:'Fixed our checkout bug in a day.'}];
 function stars(n,sz){var r=Math.round(n),o='';for(var i=1;i<=5;i++)o+='<span style="color:'+(i<=r?'var(--co)':'var(--line)')+'">\u2605</span>';return '<span role="img" aria-label="'+n.toFixed(1)+' out of 5 stars" style="font-size:'+(sz||22)+'px;letter-spacing:2px">'+o+'</span>'}
-function reviewsFor(by){var st=(PROFILES[by]&&PROFILES[by].reviews)||[];return st.concat(S.jobs.filter(function(j){var h=hiredP(j);return j.review&&h&&h.by===by}).map(function(j){return{by:j.client,stars:j.review.stars,text:j.review.text}}))}
+function reviewsForLocal(by){var st=(PROFILES[by]&&PROFILES[by].reviews)||[];return st.concat(S.jobs.filter(function(j){var h=hiredP(j);return j.review&&h&&h.by===by}).map(function(j){return{by:j.client,stars:j.review.stars,text:j.review.text}}))}
 function openReview(id){open_(id);setTimeout(function(){var e=document.querySelector('#rt');if(e&&e.scrollIntoView)e.scrollIntoView({block:'center'})},60)}
 function reviewBox(j){if(j.review)return '<div class="card"><b>Your review</b><div>'+stars(j.review.stars,18)+'</div><p class="note">'+esc(j.review.text)+'</p></div>';
 return '<div class="card"><h2>Review '+esc(nm(hiredP(j)))+'</h2><p class="note" style="margin:0 0 8px">Your rating and comment appear on their profile.</p><div role="group" aria-label="Rating">'+[1,2,3,4,5].map(function(i){return '<button type="button" class="star" aria-label="'+i+' stars" onclick="setRv('+i+')" style="color:'+(i<=rv?'var(--co)':'var(--line)')+'">\u2605</button>'}).join('')+'</div><label for="rt">Comment</label><textarea id="rt" placeholder="How was it working with them?">'+esc(rvt)+'</textarea><p></p><button class="btn" onclick="submitReview('+j.id+')">Submit review</button></div>'}
 function setRv(n){var t=$('#rt');if(t)rvt=t.value;rv=n;render()}
-function submitReview(id){var t=$('#rt').value.trim();J(id).review={stars:rv,text:t||'No comment.'};rv=5;rvt='';save();toast('Review posted');render()}
+function submitReviewLocal(id){var t=$('#rt').value.trim();J(id).review={stars:rv,text:t||'No comment.'};rv=5;rvt='';save();toast('Review posted');render()}
 var chatView=null;
 function chatSeedFor(uid){var n=Date.now();return[{id:'c'+(S.next++),client:'Jonas Becker',free:uid,uc:false,uf:true,msgs:[{from:'client',text:'Hi, I saw your profile. Are you free to write a four-part blog series on home solar? I can share the brief.',t:n-7200000}]},{id:'c'+(S.next++),client:'Rosa Alvarez',free:uid,uc:false,uf:true,msgs:[{from:'client',text:'Hello! Could you take a quick look at our Shopify checkout and tell me what a fix would cost?',t:n-86400000}]}]}
 function chatById(id){return S.chats.filter(function(c){return c.id===id})[0]}
@@ -396,9 +396,9 @@ function myChats(){return S.chats.filter(function(c){return role==='client'?c.cl
 function unread(){return myChats().some(function(c){return role==='client'?c.uc:c.uf})}
 function other(c){var k=role==='client'?c.free:c.client;return{n:pname(k),r:(role==='client'&&(S.profiles[k]||PROFILES[k]))||{}}}
 function ago(t){var d=Math.round((Date.now()-t)/60000);if(!t||d<1)return 'Just now';if(d<60)return d+' min ago';if(d<1440)return Math.round(d/60)+' h ago';return Math.round(d/1440)+' d ago'}
-function sendMsg(by){var t=$('#mt').value.trim();if(!t){toast('Write a message first');return}var c=chatFor(UID,by);c.msgs.push({from:'client',text:t,t:Date.now()});c.uf=true;save();toast('Message sent');render()}
-function reply(id){var c=chatById(id),t=$('#rm').value.trim();if(!t)return;c.msgs.push({from:role==='client'?'client':'free',text:t,t:Date.now()});if(role==='client')c.uf=true;else c.uc=true;save();render();scrollTo(0,document.body.scrollHeight);var x=$('#rm');if(x&&x.focus)x.focus()}
-function openChat(id){var c=chatById(id);chatView=id;pview=null;view=null;if(role==='client')c.uc=false;else c.uf=false;save();render();scrollTo(0,document.body.scrollHeight)}
+function sendMsgLocal(by){var t=$('#mt').value.trim();if(!t){toast('Write a message first');return}var c=chatFor(UID,by);c.msgs.push({from:'client',text:t,t:Date.now()});c.uf=true;save();toast('Message sent');render()}
+function replyLocal(id){var c=chatById(id),t=$('#rm').value.trim();if(!t)return;c.msgs.push({from:role==='client'?'client':'free',text:t,t:Date.now()});if(role==='client')c.uf=true;else c.uc=true;save();render();scrollTo(0,document.body.scrollHeight);var x=$('#rm');if(x&&x.focus)x.focus()}
+function openChatLocal(id){var c=chatById(id);chatView=id;pview=null;view=null;if(role==='client')c.uc=false;else c.uf=false;save();render();scrollTo(0,document.body.scrollHeight)}
 var iq='';
 function hm(t){return new Date(t||Date.now()).toLocaleTimeString(LT,{hour:'2-digit',minute:'2-digit'})}
 function dayOf(t){return new Date(t||Date.now()).toDateString()}
@@ -422,7 +422,7 @@ return h+cs.map(function(c){var o=other(c),l=c.msgs[c.msgs.length-1],u=role==='c
 return '<div class="cl'+(u?' un':'')+'" role="button" tabindex="0" data-n="'+esc(o.n.toLowerCase())+'" onclick="openChat(\''+c.id+'\')" onkeydown="if(event.key===\'Enter\')openChat(\''+c.id+'\')">'+avatar(o.r,o.n,52)+'<div class="mid"><div class="row" style="flex-wrap:nowrap"><b>'+esc(o.n)+'</b><span class="t">'+shortT(l&&l.t)+'</span></div><div class="row" style="flex-wrap:nowrap"><div class="pre">'+(l&&l.from===mine?'\u2713 ':'')+(l?esc(l.text):'')+'</div>'+(u?'<span class="nb">'+(k||1)+'</span>':'')+'</div></div></div>'}).join('')}
 function thread(c){var o=other(c),mine=role==='client'?'client':'free',read=role==='client'?!c.uf:!c.uc,sub=role==='client'?((o.r&&o.r.headline)||'Freelancer'):'Client';
 var h='<div class="chh"><button class="bk" onclick="chatView=null;render()" aria-label="Back to messages"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>'+avatar(o.r,o.n,40)+'<div><b>'+esc(o.n)+'</b><small>'+esc(sub)+'</small></div></div><div class="chb">';
-if(role==='client'&&!S.profiles[c.free])h+='<div class="day">Sample freelancer: replies are not available</div>';
+if(!subCfgOk()&&role==='client'&&!S.profiles[c.free])h+='<div class="day">Sample freelancer: replies are not available</div>';
 var last=null,prev=null;
 c.msgs.forEach(function(m){if(m.t&&dkey(m.t)!==last){last=dkey(m.t);h+='<div class="day">'+dayLabel(m.t)+'</div>';prev=null}var first=prev!==m.from;prev=m.from;h+='<div class="mb'+(m.from===mine?' me':'')+(first?' f':'')+'"><span>'+esc(m.text).replace(/\n/g,'<br>')+'</span><i class="tm">'+clock(m.t)+(m.from===mine?' <b class="tk" style="opacity:'+(read?1:.6)+'">'+(read?'\u2713\u2713':'\u2713')+'</b>':'')+'</i></div>'});
 h+='</div><div class="chc"><div><textarea id="rm" rows="1" aria-label="Message" placeholder="Message" oninput="this.style.height=\'auto\';this.style.height=Math.min(this.scrollHeight,120)+\'px\'" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey&&matchMedia(\'(pointer:fine)\').matches){event.preventDefault();reply(\''+c.id+'\')}"></textarea><button class="snd" onclick="reply(\''+c.id+'\')" aria-label="Send"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3.4 20.4 21 12 3.4 3.6 3.3 10l12.6 2-12.6 2z"/></svg></button></div></div>';
@@ -463,7 +463,7 @@ function sbSess(){try{return JSON.parse(localStorage.getItem(SBKEY))}catch(e){re
 function sbSave(v){try{if(v)localStorage.setItem(SBKEY,JSON.stringify(v));else localStorage.removeItem(SBKEY)}catch(e){}}
 function sbStore(b,email){var u=b.user||{},m=u.user_metadata||{},o=sbSess()||{},same=o.uid&&u.id&&o.uid===u.id;
  sbSave({email:email,uid:u.id||o.uid,name:m.name||o.name,role:same?(o.role||m.role||'client'):(u.id?(m.role||'client'):(o.role||'client')),access_token:b.access_token,refresh_token:b.refresh_token,expires_at:Math.floor(Date.now()/1000)+(b.expires_in||3600)})}
-function sbReq(method,path,body,tok){var h={'Content-Type':'application/json',apikey:SUBCFG.SUPABASE_ANON_KEY};h.Authorization='Bearer '+(tok||SUBCFG.SUPABASE_ANON_KEY);var o={method:method,headers:h};if(body&&method!=='GET')o.body=JSON.stringify(body);
+function sbReq(method,path,body,tok,extra){var h={'Content-Type':'application/json',apikey:SUBCFG.SUPABASE_ANON_KEY};h.Authorization='Bearer '+(tok||SUBCFG.SUPABASE_ANON_KEY);if(extra)for(var k in extra)h[k]=extra[k];var o={method:method,headers:h};if(body&&method!=='GET')o.body=JSON.stringify(body);
  return fetch(SUBCFG.SUPABASE_URL.replace(/\/$/,'')+path,o).then(function(r){return r.json().catch(function(){return {}}).then(function(j){return {ok:r.ok,status:r.status,body:j}})})}
 function sbPost(path,body,tok){return sbReq('POST',path,body,tok)}
 function sbToken(){var x=sbSess();if(!x)return Promise.resolve(null);if(ME&&x.email!==subEmail())return Promise.resolve(null);
@@ -690,7 +690,7 @@ function doLoginLocal(){if(busy)return;var e=normE($('#le').value),p=$('#lp').va
 var f=fl(e);if(f.n>=5&&Date.now()-f.t>=30000)f.n=0;if(f.n>=5){aerr='Too many attempts. Wait 30 seconds and try again.';return render()}
 var u=findU(e);busy=true;
 (u?hashPw(p,u.salt):hashPw(p,b64(newSalt())).then(function(){return null})).then(function(h){busy=false;if(u&&h&&same(h,u.hash)){f.n=0;AUTH.session=u.id;asave();enter(u)}else{f.n++;f.t=Date.now();aerr='Incorrect email or password.';render()}}).catch(function(){busy=false;aerr='Something went wrong. Please try again.';render()})}
-function enter(u){ME=u;UID=u.id;role=u.role;setTimeout(subSync,0);setTimeout(profLoad,0);if(!S.profiles[UID])S.profiles[UID]=newProf(u.name);S.profile=S.profiles[UID];tab=role==='client'?'jobs':'find';view=null;pview=null;chatView=null;mopen=false;ecs=0;aerr='';render();scrollTo(0,0)}
+function enter(u){ME=u;UID=u.id;role=u.role;setTimeout(subSync,0);setTimeout(profLoad,0);setTimeout(dataLoad,0);if(!S.profiles[UID])S.profiles[UID]=newProf(u.name);S.profile=S.profiles[UID];tab=role==='client'?'jobs':'find';view=null;pview=null;chatView=null;mopen=false;ecs=0;aerr='';render();scrollTo(0,0)}
 function setMode(r){role=r;ME.role=r;asave();var sx=sbSess();if(sx){sx.role=r;sbSave(sx)}tab=r==='client'?'jobs':'find';view=null;pview=null;chatView=null;ecs=0;render();scrollTo(0,0)}
 function logoutLocal(){sbSave(null);pst={step:'choose',plan:null,inv:null,err:'',msg:'',busy:false,wallet:'',tx:''};AUTH.session=null;asave();save();ME=null;UID=null;S.profile=null;pend=null;scr='home';aerr='';ecs=0;chatView=null;pview=null;view=null;tab='jobs';render();scrollTo(0,0)}
 function accountView(){var h='<h1>'+tx('account')+'</h1><p class="sub">Manage how you sign in.</p><div class="card"><b>'+esc(ME.name)+'</b><div class="note" style="margin:0">Use the switch at the top to move between Client and Freelancer.</div></div>';
@@ -744,6 +744,94 @@ function profFlush(){var ids=profBatch.splice(0,50);if(!ids.length)return;var in
   if(changed){save();softRender()}}).catch(function(){})}
 function strip(r){var c=JSON.parse(JSON.stringify(r));['services','portfolio','exp'].forEach(function(k){(c[k]||[]).forEach(function(x){delete x.id})});return c}
 
+/* ---------- Jobs, proposals, hiring, messages and reviews on Supabase ---------- */
+var wrk=false,jobsSig='',chatSig='',revSeen={},pollN=0;
+function dataLoad(){jobsLoad();chatsLoad()}
+function jobFromDb(d,props){var j={id:d.id,title:d.title,desc:d.description||'',budget:Number(d.budget),cat:d.category,skills:d.skills||[],owner:d.client_id,status:d.status,hired:d.hired_proposal_id||null,hfree:d.hired_freelancer_id||null,props:props||[]};
+ Object.defineProperty(j,'client',{get:function(){return pname(d.client_id)},enumerable:false,configurable:true});return j}
+function jobsLoad(){if(!subCfgOk())return Promise.resolve();
+ return sbToken().then(function(t){
+  var rq=[sbReq('GET','/rest/v1/jobs?select=*&status=in.(open,in_progress,delivered,paid)&order=created_at.desc&limit=300',null,t)];
+  if(t)rq.push(sbReq('GET','/rest/v1/proposals?select=id,job_id,freelancer_id,price,message,status&status=neq.withdrawn&order=id.asc&limit=2000',null,t));
+  return Promise.all(rq).then(function(a){if(!a[0].ok||!Array.isArray(a[0].body))return;
+   var pm={};((a[1]&&a[1].ok&&Array.isArray(a[1].body))?a[1].body:[]).forEach(function(x){(pm[x.job_id]=pm[x.job_id]||[]).push({id:x.id,by:x.freelancer_id,price:Number(x.price),msg:x.message})});
+   var js=a[0].body.map(function(d){return jobFromDb(d,pm[d.id])}),paid=js.filter(function(j){return j.status==='paid'}).map(function(j){return j.id});
+   return (t&&paid.length?sbReq('GET','/rest/v1/reviews?select=job_id,stars,comment&job_id=in.('+paid.join(',')+')',null,t):Promise.resolve(null)).then(function(rr){
+    if(rr&&rr.ok&&Array.isArray(rr.body)){var rm={};rr.body.forEach(function(x){rm[x.job_id]={stars:x.stars,text:x.comment}});js.forEach(function(j){if(rm[j.id])j.review=rm[j.id]})}
+    applyJobs(js)})})}).catch(function(){})}
+function applyJobs(js){var sig=JSON.stringify(js);if(sig===jobsSig)return;jobsSig=sig;S.jobs=js;save();softRender()}
+function noSub(){toast('Your subscription isn’t active. Renew to continue.');subSync();go('plan')}
+function postJobSb(){if(needSub()||wrk)return;var t=$('#t').value.trim(),b=Number($('#b').value),d=$('#d').value.trim();
+ if(!t||!(b>0)){toast('Add a title and a budget above $0');return}if(t.length<3){toast('Make the title a little longer');return}
+ wrk=true;var body={client_id:UID,title:t,description:d||'No description provided.',budget:b,category:$('#c').value,skills:csv($('#js').value)};
+ sbToken().then(function(tk){if(!tk)throw 0;return sbReq('POST','/rest/v1/jobs',body,tk,{Prefer:'return=representation'})}).then(function(r){wrk=false;
+  if(r.ok&&Array.isArray(r.body)&&r.body[0]){S.jobs.unshift(jobFromDb(r.body[0],[]));jobsSig='';save();toast('Job published');go('jobs')}
+  else if(r.status===401||r.status===403)noSub();else toast('We couldn’t publish the job. Please try again.')
+ }).catch(function(){wrk=false;toast('Network problem. Please try again.')})}
+function proposeSb(id,retried){var jb=J(id);if(!jb||jb.owner===UID){toast('You can’t send a proposal on your own job');return}if(needSub()||wrk)return;
+ if(!S.profile.headline){toast('Complete your profile first');go('profile');return}
+ var pr=Number($('#pp').value),m=$('#pm').value.trim();if(!(pr>0)||!m){toast('Add a price and a short message');return}
+ wrk=true;sbToken().then(function(tk){if(!tk)throw 0;return sbReq('POST','/rest/v1/proposals',{job_id:id,freelancer_id:UID,price:pr,message:m},tk,{Prefer:'return=representation'})}).then(function(r){wrk=false;
+  if(r.ok&&Array.isArray(r.body)&&r.body[0]){var x=r.body[0];jb.props.push({id:x.id,by:x.freelancer_id,price:Number(x.price),msg:x.message});jobsSig='';save();toast('Proposal sent');render();jobsLoad();return}
+  if(r.status===409){toast('You already sent a proposal on this job');jobsLoad();return}
+  if((r.status===401||r.status===403)&&!retried){profPush().then(function(){return subSync()}).then(function(){setTimeout(function(){proposeSb(id,true)},400)});return}
+  toast('We couldn’t send it. Check that your subscription is active, your profile is saved, and the job is still open.')
+ }).catch(function(){wrk=false;toast('Network problem. Please try again.')})}
+function rpcJob(fn,args,okMsg,after){if(wrk)return;wrk=true;
+ sbToken().then(function(tk){if(!tk)throw 0;return sbReq('POST','/rest/v1/rpc/'+fn,args,tk)}).then(function(r){wrk=false;
+  if(r.ok){toast(okMsg);jobsSig='';jobsLoad().then(function(){render();if(after)after()})}
+  else{toast('That isn’t available right now. Refreshing…');jobsLoad().then(render)}
+ }).catch(function(){wrk=false;toast('Network problem. Please try again.')})}
+function hireSb(id,pid){rpcJob('hire_freelancer',{p_job_id:id,p_proposal_id:pid},'Freelancer hired')}
+function deliverSb(id){rpcJob('mark_delivered',{p_job_id:id},'Marked as delivered')}
+function approveSb(id){rpcJob('approve_work',{p_job_id:id},'Work approved. Please rate your freelancer.',function(){var e=document.querySelector('#rt');if(e&&e.scrollIntoView)e.scrollIntoView({block:'center'})})}
+function submitReviewSb(id){var t=$('#rt').value.trim(),st=rv;if(wrk)return;wrk=true;
+ sbToken().then(function(tk){if(!tk)throw 0;return sbReq('POST','/rest/v1/rpc/submit_review',{p_job_id:id,p_stars:st,p_comment:t||null},tk)}).then(function(r){wrk=false;
+  if(r.ok){var j=J(id);if(j)j.review={stars:st,text:t||'No comment.'};rv=5;rvt='';jobsSig='';save();toast('Review posted');render();jobsLoad()}
+  else{toast('That review couldn’t be saved. It may already exist.');jobsLoad().then(render)}
+ }).catch(function(){wrk=false;toast('Network problem. Please try again.')})}
+function revQ(by){if(!UUID_RE.test(by)||(revSeen[by]&&Date.now()-revSeen[by]<30000))return;revSeen[by]=Date.now();
+ sbReq('GET','/rest/v1/reviews?select=reviewer_id,stars,comment&reviewee_id=eq.'+by+'&order=created_at.desc&limit=100').then(function(r){
+  if(!r.ok||!Array.isArray(r.body))return;var l=r.body.map(function(x){return{rid:x.reviewer_id,stars:x.stars,text:x.comment}});S.revs=S.revs||{};
+  if(JSON.stringify(S.revs[by])!==JSON.stringify(l)){S.revs[by]=l;save();softRender()}}).catch(function(){})}
+function reviewsForSb(by){revQ(by);return((S.revs&&S.revs[by])||[]).map(function(x){return{by:pname(x.rid),stars:x.stars,text:x.text}})}
+/* messages (checked every few seconds while a chat is open) */
+function chatsLoad(){if(!subCfgOk()||!UID)return Promise.resolve();
+ return sbToken().then(function(t){if(!t)return;
+  return Promise.all([sbReq('GET','/rest/v1/conversations?select=id,client_id,freelancer_id,last_message_at&order=last_message_at.desc&limit=100',null,t),
+   sbReq('GET','/rest/v1/messages?select=id,conversation_id,sender_id,body,created_at,read_at&order=created_at.desc&limit=400',null,t)]).then(function(a){
+   if(!a[0].ok||!a[1].ok||!Array.isArray(a[0].body)||!Array.isArray(a[1].body))return;
+   var by={};a[1].body.slice().reverse().forEach(function(m){(by[m.conversation_id]=by[m.conversation_id]||[]).push(m)});
+   applyChats(a[0].body.map(function(c){var ms=by[c.id]||[];
+    return{id:c.id,client:c.client_id,free:c.freelancer_id,
+     uc:ms.some(function(m){return m.sender_id!==c.client_id&&!m.read_at}),uf:ms.some(function(m){return m.sender_id===c.client_id&&!m.read_at}),
+     msgs:ms.map(function(m){return{id:m.id,from:m.sender_id===c.client_id?'client':'free',text:m.body,t:new Date(m.created_at).getTime()}})}}))})}).catch(function(){})}
+function chatRender(){var a=document.activeElement,k=a&&a.id==='rm'?{v:a.value,s:a.selectionStart,e:a.selectionEnd}:null;render();
+ if(k){var x=$('#rm');if(x){x.value=k.v;if(x.focus)x.focus();try{x.setSelectionRange(k.s,k.e)}catch(e){}}}}
+function applyChats(cs){var sig=JSON.stringify(cs);if(sig===chatSig)return;var open=chatView!=null?chatById(chatView):null,before=open?open.msgs.length:0;chatSig=sig;S.chats=cs;save();
+ if(chatView!=null){var c=chatById(chatView);if(c){if(role==='client'?c.uc:c.uf)markRead(c.id);chatRender();if(c.msgs.length>before)scrollTo(0,document.body.scrollHeight)}else chatRender()}else softRender()}
+function markRead(id){sbToken().then(function(t){if(t)return sbReq('POST','/rest/v1/rpc/mark_conversation_read',{p_conv:id},t)}).catch(function(){})}
+function openChat(id){openChatLocal(id);if(subCfgOk())markRead(id)}
+function sendMsgSb(by){var t=$('#mt').value.trim();if(!t){toast('Write a message first');return}if(wrk)return;wrk=true;
+ sbToken().then(function(tk){if(!tk)throw 0;return sbReq('POST','/rest/v1/rpc/start_conversation',{p_other:by},tk).then(function(r){if(!r.ok||typeof r.body!=='string')throw 1;
+  return sbReq('POST','/rest/v1/messages',{conversation_id:r.body,sender_id:UID,body:t},tk)})}).then(function(r){wrk=false;
+  if(r&&r.ok){toast('Message sent');chatsLoad().then(render)}else toast('We couldn’t send that message.')}).catch(function(){wrk=false;toast('We couldn’t send that message.')})}
+function replySb(id){var c=chatById(id),x=$('#rm'),t=x&&x.value.trim();if(!c||!t)return;
+ var tmp={from:c.client===UID?'client':'free',text:t,t:Date.now()};c.msgs.push(tmp);x.value='';chatRender();scrollTo(0,document.body.scrollHeight);
+ sbToken().then(function(tk){if(!tk)throw 0;return sbReq('POST','/rest/v1/messages',{conversation_id:id,sender_id:UID,body:t},tk)}).then(function(r){
+  if(!r.ok)throw 1;chatSig='';chatsLoad()}).catch(function(){var i=c.msgs.indexOf(tmp);if(i>=0)c.msgs.splice(i,1);chatRender();var y=$('#rm');if(y)y.value=t;toast('Message not sent. Try again.')})}
+function postJob(){return subCfgOk()?postJobSb():postJobLocal()}
+function propose(id){return subCfgOk()?proposeSb(id):proposeLocal(id)}
+function hire(id,pid){return subCfgOk()?hireSb(id,pid):hireLocal(id,pid)}
+function deliver(id){return subCfgOk()?deliverSb(id):deliverLocal(id)}
+function approve(id){return subCfgOk()?approveSb(id):approveLocal(id)}
+function submitReview(id){return subCfgOk()?submitReviewSb(id):submitReviewLocal(id)}
+function sendMsg(by){return subCfgOk()?sendMsgSb(by):sendMsgLocal(by)}
+function reply(id){return subCfgOk()?replySb(id):replyLocal(id)}
+function reviewsFor(by){return subCfgOk()?reviewsForSb(by):reviewsForLocal(by)}
+if(typeof setInterval==='function')setInterval(function(){if(!subCfgOk()||!UID||(document.hidden))return;pollN++;if(chatView!=null||pollN%4===0)chatsLoad();if(pollN%6===0)jobsLoad()},4000);
+if(document.addEventListener)document.addEventListener('visibilitychange',function(){if(!document.hidden&&subCfgOk())dataLoad()});
+
 /* ---------- Accounts and sessions on Supabase (works on any device) ---------- */
 function userFrom(u){var m=(u&&u.user_metadata)||{},e=String((u&&u.email)||'').toLowerCase();return{id:u.id,email:e,name:m.name||e.split('@')[0],role:m.role||'client'}}
 function pwMsg(){return 'That password isn’t accepted. Use at least 8 characters, with a letter and a number.'}
@@ -754,7 +842,7 @@ function startReset(){return subCfgOk()?startResetSb():startResetLocal()}
 function doReset(){return subCfgOk()?doResetSb():doResetLocal()}
 function startEmail(){return subCfgOk()?startEmailSb():startEmailLocal()}
 function finishEmail(){if(!subCfgOk())return finishEmailLocal();ME.email=pend.newEmail;pend=null;ecs=0;aerr='';toast('Email address updated');render()}
-function logout(){var x=sbSess();if(x&&x.access_token&&subCfgOk())sbReq('POST','/auth/v1/logout',{},x.access_token).catch(function(){});logoutLocal()}
+function logout(){var x=sbSess();if(x&&x.access_token&&subCfgOk())sbReq('POST','/auth/v1/logout',{},x.access_token).catch(function(){});if(subCfgOk()){S.jobs=[];S.chats=[];S.revs={};jobsSig='';chatSig=''}logoutLocal();if(subCfgOk())setTimeout(jobsLoad,50)}
 function doLoginSb(){if(busy)return;var e=normE($('#le').value),p=$('#lp').value;ad.email=e;aerr='';
  var f=fl(e);if(f.n>=5&&Date.now()-f.t>=30000)f.n=0;if(f.n>=5){aerr='Too many attempts. Wait 30 seconds and try again.';return render()}
  if(!EMAIL_RE.test(e)||!p){aerr='Enter your email and password.';return render()}
@@ -804,7 +892,7 @@ AUTH=aload();S=load();
 (function(){
  if(subCfgOk()){var x=sbSess();
   if(x&&x.uid&&x.email){enter({id:x.uid,email:x.email,name:x.name||x.email.split('@')[0],role:x.role||'client'});sbToken().catch(function(){});return}
-  render();return}
+  render();jobsLoad();return}
  var u=AUTH.session&&AUTH.users.filter(function(x){return x.id===AUTH.session})[0];if(u)enter(u);else render()})();
 
 </script>
