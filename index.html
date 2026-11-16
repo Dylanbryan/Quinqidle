@@ -209,9 +209,12 @@ function seed0(){return{next:100,jobs:[
 {id:3,title:'Four blog posts on home solar',desc:'800 words each, researched and SEO-aware. Interviews with installers are a bonus.',budget:400,cat:'Writing',owner:'other',client:'Jonas Becker',status:'open',hired:null,props:[]},
 {id:4,title:'Fix the checkout bug on our Shopify store',desc:'The discount code field clears the cart on mobile Safari. Need a fix and a short write-up.',budget:250,cat:'Development',owner:'other',client:'Rosa Alvarez',status:'open',hired:null,props:[{id:41,by:'Tom Lind',price:230,msg:'Likely a theme JS issue. I can fix it within 48 hours.'}]},
 {id:5,title:'Launch email sequence for a fitness app',desc:'Five emails: welcome, onboarding, trial reminder, win-back and upgrade.',budget:300,cat:'Marketing',owner:'other',client:'Kai Morita',status:'open',hired:null,props:[]}]}}
-var SAMPLE=seed0().jobs.filter(function(j){return j.owner==='me'});
-function seed(){var s=seed0();s.jobs=s.jobs.filter(function(j){return j.owner!=='me'});s.chats=[];s.profiles={};s.names={};s.v=2;return s}
-function load(){var s;try{var r=localStorage.getItem(KEY);if(r)s=JSON.parse(r)}catch(e){}if(!s||s.v!==2)s=seed();s.profile=null;s.chats=s.chats||[];s.profiles=s.profiles||{};s.names=s.names||{};s.jobs.forEach(function(j){j.cat=CATMAP[j.cat]||j.cat});return s}
+var SAMPLE=[]; /* sample jobs removed */
+function seed(){var s=seed0();s.jobs=[];s.chats=[];s.profiles={};s.names={};s.v=2;return s}
+function load(){var s;try{var r=localStorage.getItem(KEY);if(r)s=JSON.parse(r)}catch(e){}if(!s||s.v!==2)s=seed();s.profile=null;s.chats=s.chats||[];s.profiles=s.profiles||{};s.names=s.names||{};
+var SJ=seed0().jobs.map(function(j){return j.title+'|'+j.desc});s.jobs=(s.jobs||[]).filter(function(j){return SJ.indexOf(j.title+'|'+j.desc)<0});
+s.chats=s.chats.filter(function(c){return c.client!=='Jonas Becker'&&c.client!=='Rosa Alvarez'});
+s.jobs.forEach(function(j){j.cat=CATMAP[j.cat]||j.cat});return s}
 function save(){try{if(UID&&S.profile)S.profiles[UID]=S.profile;localStorage.setItem(KEY,JSON.stringify(S,function(k,v){return k==='profile'&&this===S?undefined:v}))}catch(e){}}
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
 function $(s){return document.querySelector(s)}
@@ -316,6 +319,7 @@ function detail(j){
   else{h+='<div class="card"><span class="tag ok">Completed</span> You approved the work from '+esc(nm(hp))+'.</div>'+reviewBox(j)}
  }else{
   var m=mine(j);
+  if(j.owner===UID)return h+'<div class="empty">You posted this job, so you can’t send a proposal on it. Switch to Client to review proposals.</div>';
   if(!m){
    if(j.status!=='open')return h+'<div class="empty">This job is no longer open.</div>';
    h+=subBanner()+'<div class="card"><h2>Send a proposal</h2>'+(S.profile.headline?'':'<p class="note">A profile is required to send proposals. <button class="link" style="font-size:13px;margin:0" onclick="go(\'profile\')">Complete your profile</button></p>')+'<label for="pp">Your price (USD)</label><input id="pp" type="number" inputmode="numeric" min="1" value="'+j.budget+'"><label for="pm">Why you’re a fit</label><textarea id="pm" placeholder="Relevant experience, timeline and what you’ll deliver."></textarea><p></p><button class="btn" onclick="propose('+j.id+')">Send proposal</button></div>';
@@ -330,7 +334,7 @@ function detail(j){
  }
  return h;
 }
-function propose(id){if(needSub())return;if(!S.profile.headline){toast('Complete your profile first');go('profile');return}var p=Number($('#pp').value),m=$('#pm').value.trim();if(!(p>0)||!m){toast('Add a price and a short message');return}
+function propose(id){var jb=J(id);if(!jb||jb.owner===UID){toast('You can’t send a proposal on your own job');return}if(needSub())return;if(!S.profile.headline){toast('Complete your profile first');go('profile');return}var p=Number($('#pp').value),m=$('#pm').value.trim();if(!(p>0)||!m){toast('Add a price and a short message');return}
  J(id).props.push({id:S.next++,by:UID,price:p,msg:m});save();toast('Proposal sent');render()}
 function hire(id,pid){var j=J(id);j.hired=pid;j.status='in_progress';save();toast('Freelancer hired');render()}
 function deliver(id){J(id).status='delivered';save();toast('Marked as delivered');render()}
@@ -657,7 +661,6 @@ function finishSignup(){var p=pend;if(findU(p.email)){aerr='An account with this
 var u={id:uid(),email:p.email,name:p.name,role:p.role,salt:p.salt,hash:p.hash};
 AUTH.users.push(u);AUTH.session=u.id;asave();
 S.names[u.id]=u.name;S.profiles[u.id]=newProf(u.name);
-S.chats=S.chats.concat(chatSeedFor(u.id));
 SAMPLE.forEach(function(t){var j=JSON.parse(JSON.stringify(t));j.id=S.next++;j.owner=u.id;j.client=u.name;j.cat=CATMAP[j.cat]||j.cat;j.props.forEach(function(q){q.id=S.next++});S.jobs.unshift(j)});
 pend=null;aerr='';ad={name:'',email:'',role:'client'};enter(u);save();toast('Account created')}
 function pto(){return pend.kind==='email'?pend.newEmail:pend.email}
