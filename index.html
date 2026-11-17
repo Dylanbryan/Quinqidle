@@ -447,7 +447,7 @@ if(r.tools)m+='<div class="pn"><h2>Tools and software</h2><div class="skills">'+
 [['Services to sell','services',svx],['Portfolio','portfolio'],['Experience and credentials','exp']].forEach(function(x){if((r[x[1]]||[]).length)m+='<div class="pn"><h2>'+x[0]+'</h2>'+items(r,x[1],false,x[2])+'</div>'});
 return '<button class="link" onclick="pview=null;mopen=false;render()">Back</button><div class="pvw"><div class="cover"></div><div class="pv">'+side+'<div class="vl"></div>'+m+'</div></div></div>'}
 /* ---------- Subscription: $10/month or $100/year, paid in USDC to the site wallet, verified on-chain by the backend ---------- */
-var SUBCFG={SUPABASE_URL:'https://dwgvjtcocgybdofsakci.supabase.co',SUPABASE_ANON_KEY:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR3Z3ZqdGNvY2d5YmRvZnNha2NpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ0NzE1ODgsImV4cCI6MjExMDA0NzU4OH0.Wkcn73axmea58W3hHMfP7l8bcfALHsUafpTjE_7Rlh8'}; /* fill in after deploying the Supabase backend */
+var SUBCFG={SUPABASE_URL:'https://dwgvjtcocgybdofsakci.supabase.co',SUPABASE_ANON_KEY:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR3Z3ZqdGNvY2d5YmRvZnNha2NpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ0NzE1ODgsImV4cCI6MjExMDA0NzU4OH0.Wkcn73axmea58W3hHMfP7l8bcfALHsUafpTjE_7Rlh8',CAPTCHA_PROVIDER:'hcaptcha',CAPTCHA_SITE_KEY:''}; /* CAPTCHA_PROVIDER: 'hcaptcha' or 'turnstile'. CAPTCHA_SITE_KEY: your public site key. Leave the key blank to switch the security check off. */ /* fill in after deploying the Supabase backend */
 var SUBKEY='quinqidle-sub-v1',SBKEY='quinqidle-sb-v1';
 var PLANS={monthly:{label:'Monthly',price:10,per:'month'},yearly:{label:'Yearly',price:100,per:'year'}};
 var pst={step:'choose',plan:null,inv:null,err:'',msg:'',busy:false,wallet:'',tx:''};
@@ -463,7 +463,7 @@ function sbSess(){try{return JSON.parse(localStorage.getItem(SBKEY))}catch(e){re
 function sbSave(v){try{if(v)localStorage.setItem(SBKEY,JSON.stringify(v));else localStorage.removeItem(SBKEY)}catch(e){}}
 function sbStore(b,email){var u=b.user||{},m=u.user_metadata||{},o=sbSess()||{},same=o.uid&&u.id&&o.uid===u.id;
  sbSave({email:email,uid:u.id||o.uid,name:m.name||o.name,role:same?(o.role||m.role||'client'):(u.id?(m.role||'client'):(o.role||'client')),access_token:b.access_token,refresh_token:b.refresh_token,expires_at:Math.floor(Date.now()/1000)+(b.expires_in||3600)})}
-function sbReq(method,path,body,tok,extra){var h={'Content-Type':'application/json',apikey:SUBCFG.SUPABASE_ANON_KEY};h.Authorization='Bearer '+(tok||SUBCFG.SUPABASE_ANON_KEY);if(extra)for(var k in extra)h[k]=extra[k];var o={method:method,headers:h};if(body&&method!=='GET')o.body=JSON.stringify(body);
+function sbReqRaw(method,path,body,tok,extra){var h={'Content-Type':'application/json',apikey:SUBCFG.SUPABASE_ANON_KEY};h.Authorization='Bearer '+(tok||SUBCFG.SUPABASE_ANON_KEY);if(extra)for(var k in extra)h[k]=extra[k];var o={method:method,headers:h};if(body&&method!=='GET')o.body=JSON.stringify(body);
  return fetch(SUBCFG.SUPABASE_URL.replace(/\/$/,'')+path,o).then(function(r){return r.json().catch(function(){return {}}).then(function(j){return {ok:r.ok,status:r.status,body:j}})})}
 function sbPost(path,body,tok){return sbReq('POST',path,body,tok)}
 function sbToken(){var x=sbSess();if(!x)return Promise.resolve(null);if(ME&&x.email!==subEmail())return Promise.resolve(null);
@@ -483,7 +483,7 @@ function subFail(){pst.busy=false;pst.err='Network problem. Please try again.';r
 function subReset(){pst={step:'choose',plan:null,inv:null,err:'',msg:'',busy:false,wallet:pst.wallet,tx:''};render()}
 function subCopy(v){try{navigator.clipboard.writeText(v);toast('Copied')}catch(e){toast('Press and hold to copy')}}
 function subPick(k){if(pst.busy)return;pst.plan=k;pst.err='';pst.msg='';pst.busy=true;sbToken().then(function(t){pst.busy=false;pst.step=t?'wallet':'email';render()}).catch(subFail)}
-function subSendCode(){if(pst.busy)return;pst.busy=true;pst.err='';sbPost('/auth/v1/otp',{email:subEmail(),create_user:true}).then(function(r){pst.busy=false;if(r.ok)pst.step='code';else pst.err='We couldn’t send the code. Please try again in a minute.';render()}).catch(subFail)}
+function subSendCode(){if(pst.busy)return;pst.busy=true;pst.err='';sbPost('/auth/v1/otp',{email:subEmail(),create_user:true}).then(function(r){pst.busy=false;if(r.ok)pst.step='code';else pst.err=isCap(r)?CAPMSG:'We couldn’t send the code. Please try again in a minute.';render()}).catch(subFail)}
 function subCheckCode(){var c=($('#sc').value||'').trim();if(!/^\d{6,10}$/.test(c)){pst.err='Enter the code from the email.';render();return}if(pst.busy)return;pst.busy=true;pst.err='';
  sbPost('/auth/v1/verify',{type:'email',email:subEmail(),token:c}).then(function(r){pst.busy=false;if(r.ok&&r.body.access_token){sbStore(r.body,subEmail());pst.step='wallet';subSync()}else pst.err='That code didn’t work. Check it and try again.';render()}).catch(subFail)}
 function subMakeInvoice(){var w=($('#sw').value||'').trim();pst.wallet=w;if(!/^0x[0-9a-fA-F]{40}$/.test(w)){pst.err='Enter a valid wallet address (0x followed by 40 characters).';render();return}if(pst.busy)return;pst.busy=true;pst.err='';
@@ -619,7 +619,7 @@ function sendEmail(to,subject,text){
   pend.mail={to:to,subject:subject,text:''};var P=pend,em=String(to).toLowerCase(),k=pend.kind,req;
   if(k==='email')req=sbToken().then(function(t){return sbReq('POST','/auth/v1/resend',{type:'email_change',email:em},t)});
   else req=sbPost('/auth/v1/otp',{email:em,create_user:k==='signup',data:k==='signup'?{name:pend.name,role:pend.role}:undefined});
-  req.then(function(r){if(!r.ok&&pend===P&&!(k==='reset'&&r.status!==429)){aerr=r.status===429?'Too many emails sent. Please wait a few minutes and try again.':'We couldn’t send the email. Check the address and try again shortly.';render()}}).catch(function(){if(pend===P){aerr='Network problem. Please try again.';render()}});
+  req.then(function(r){if(!r.ok&&pend===P&&!(k==='reset'&&r.status!==429&&!isCap(r))){aerr=isCap(r)?CAPMSG:(r.status===429?'Too many emails sent. Please wait a few minutes and try again.':'We couldn’t send the email. Check the address and try again shortly.');render()}}).catch(function(){if(pend===P){aerr='Network problem. Please try again.';render()}});
   return}
  /* no backend configured: the message is shown on screen */
  pend.mail={to:to,subject:subject,text:text}}
@@ -744,6 +744,32 @@ function profFlush(){var ids=profBatch.splice(0,50);if(!ids.length)return;var in
   if(changed){save();softRender()}}).catch(function(){})}
 function strip(r){var c=JSON.parse(JSON.stringify(r));['services','portfolio','exp'].forEach(function(k){(c[k]||[]).forEach(function(x){delete x.id})});return c}
 
+/* ---------- Security check (Cloudflare Turnstile). Active only when CAPTCHA_SITE_KEY is set. ---------- */
+var cfId=null,cfCb=null,capQ=Promise.resolve(),CAPMSG='Please complete the security check and try again.';
+function capOn(){return !!SUBCFG.CAPTCHA_SITE_KEY}
+function capNeeded(method,path){return capOn()&&method==='POST'&&/^\/auth\/v1\/(otp|resend|recover|signup)(\?|$)|^\/auth\/v1\/token\?grant_type=password/.test(path)}
+function isCap(r){return !!(r&&r.body&&(r.body.error==='captcha'||r.body.error_code==='captcha_failed'))}
+function capHc(){return SUBCFG.CAPTCHA_PROVIDER!=='turnstile'}   /* hCaptcha unless told otherwise */
+function capLib(){return capHc()?window.hcaptcha:window.turnstile}
+function capLoad(){if(capLib())return Promise.resolve();
+ return new Promise(function(res,rej){var el=document.createElement('script');el.src=capHc()?'https://js.hcaptcha.com/1/api.js?render=explicit':'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';el.async=true;el.onload=res;el.onerror=function(){rej(new Error('captcha script'))};document.head.appendChild(el)})}
+function capToken(){return capLoad().then(function(){return new Promise(function(res,rej){
+ var lib=capLib(),box=document.getElementById('cf-box');
+ if(!box){box=document.createElement('div');box.id='cf-box';box.style.cssText='position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:99999';document.body.appendChild(box)}
+ var done=false,tm=setTimeout(function(){fin(false)},120000);
+ function fin(ok,tok){if(done)return;done=true;clearTimeout(tm);cfCb=null;if(ok)res(tok);else rej(new Error('captcha'))}
+ cfCb=fin;
+ if(cfId===null){
+  var o={sitekey:SUBCFG.CAPTCHA_SITE_KEY,callback:function(t){if(cfCb)cfCb(true,t)},'error-callback':function(){if(cfCb)cfCb(false)},'expired-callback':function(){}};
+  if(capHc()){o.size='invisible';o['close-callback']=function(){if(cfCb)cfCb(false)}}          /* hCaptcha: invisible, pops up only when it needs proof */
+  else{o.appearance='interaction-only';o.execution='execute'}                                    /* Turnstile: same idea */
+  cfId=lib.render(box,o)}
+ else lib.reset(cfId);   /* every request needs a brand-new token */
+ lib.execute(cfId)})})}
+function capTokenQ(){var p=capQ.then(capToken);capQ=p.catch(function(){});return p}   /* one check at a time */
+function sbReq(method,path,body,tok,extra){if(!capNeeded(method,path))return sbReqRaw(method,path,body,tok,extra);
+ return capTokenQ().then(function(ct){return sbReqRaw(method,path,Object.assign({},body||{},{gotrue_meta_security:{captcha_token:ct}}),tok,extra)},function(){return{ok:false,status:400,body:{error:'captcha'}}})}
+
 /* ---------- Jobs, proposals, hiring, messages and reviews on Supabase ---------- */
 var wrk=false,jobsSig='',chatSig='',revSeen={},pollN=0;
 function dataLoad(){jobsLoad();chatsLoad()}
@@ -848,6 +874,7 @@ function doLoginSb(){if(busy)return;var e=normE($('#le').value),p=$('#lp').value
  if(!EMAIL_RE.test(e)||!p){aerr='Enter your email and password.';return render()}
  busy=true;sbPost('/auth/v1/token?grant_type=password',{email:e,password:p}).then(function(r){busy=false;
   if(r.ok&&r.body.access_token&&r.body.user){f.n=0;sbStore(r.body,e);var u=userFrom(r.body.user);u.role=sbSess().role||u.role;enter(u)}
+  else if(isCap(r)){aerr=CAPMSG;render()}
   else{f.n++;f.t=Date.now();aerr=r.status===429?'Too many attempts. Please wait a moment and try again.':'Incorrect email or password.';render()}
  }).catch(function(){busy=false;aerr='Network problem. Please try again.';render()})}
 function doSignupSb(){if(busy)return;var n=$('#sn').value.trim(),e=normE($('#se').value),r='client',p=$('#sp').value,c=$('#sc').value;ad={name:n,email:e,role:r};aerr='';
@@ -881,7 +908,7 @@ function startEmailSb(){if(busy)return;var e=normE($('#ne').value),p=$('#cp').va
  if(!p){aerr='Enter your current password to confirm.';return render()}
  busy=true;
  sbPost('/auth/v1/token?grant_type=password',{email:ME.email,password:p}).then(function(r){
-  if(!r.ok||!r.body.access_token){busy=false;aerr='Incorrect password.';render();return}
+  if(!r.ok||!r.body.access_token){busy=false;aerr=isCap(r)?CAPMSG:'Incorrect password.';render();return}
   sbStore(r.body,ME.email);
   return sbReq('PUT','/auth/v1/user',{email:e},r.body.access_token).then(function(r2){busy=false;
    if(!r2.ok){aerr=r2.status===422?'That email address can’t be used.':'We couldn’t start the change. Please try again.';render();return}
