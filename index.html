@@ -345,7 +345,8 @@ PROFILES['Ana Ruiz'].services=[{id:901,title:'One-page website design',desc:'Fig
 PROFILES['Ana Ruiz'].portfolio=[{id:902,title:'Pilates studio website',desc:'Redesigned the booking flow and class schedule.'}];
 PROFILES['Ana Ruiz'].exp=[{id:903,title:'Senior Designer, Studio North (2021–2024)',desc:''},{id:904,title:'Google UX Design Certificate (2022)',desc:''}];
 function initials(n){return String(n||'?').split(' ').map(function(w){return w.charAt(0)}).slice(0,2).join('').toUpperCase()}
-function avatar(r,n,s){r=r||{};var st='width:'+s+'px;height:'+s+'px';return r.photo?'<img class="av" style="'+st+'" alt="'+esc(n)+'" src="'+r.photo+'">':'<div class="av" style="'+st+';font-size:'+Math.round(s/2.6)+'px">'+esc(initials(n))+'</div>'}
+function avatar(r,n,s){r=r||{};var st='width:'+s+'px;height:'+s+'px',ok=r.photo&&(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+\/=]+$/.test(r.photo)||(SUBCFG.SUPABASE_URL&&r.photo.indexOf(SUBCFG.SUPABASE_URL.replace(/\/$/,'')+'/storage/v1/object/public/avatars/')===0&&!/[\s"'<>]/.test(r.photo)));return ok?'<img class="av" style="'+st+'" alt="'+esc(n)+'" data-i="'+esc(initials(n))+'" src="'+esc(r.photo)+'" onerror="avFail(this)">':'<div class="av" style="'+st+';font-size:'+Math.round(s/2.6)+'px">'+esc(initials(n))+'</div>'}
+function avFail(im){var d=document.createElement('div');d.className='av';d.style.cssText=im.style.cssText+';font-size:'+Math.round(parseInt(im.style.width,10)/2.6)+'px';d.textContent=im.getAttribute('data-i')||'';if(im.parentNode)im.parentNode.replaceChild(d,im)}
 function svx(x){return x.price?' <span class="price">from '+money(x.price)+'</span>':''}
 function items(r,key,edit,extra){return (r[key]||[]).map(function(x){return '<div class="item"><div><b>'+esc(x.title)+'</b>'+(extra?extra(x):'')+(x.desc?'<div class="note">'+esc(x.desc)+'</div>':'')+'</div>'+(edit?'<button class="link" style="margin:0" onclick="delItem(\''+key+'\','+x.id+')">Remove</button>':'')+'</div>'}).join('')}
 function sec(t,sub,b){return '<div class="card"><h2>'+t+'</h2>'+(sub?'<p class="note" style="margin:0 0 8px">'+sub+'</p>':'')+b+'</div>'}
@@ -353,11 +354,12 @@ function addForm(k,p1,p2,price){return '<label for="'+k+'-t">Title</label><input
 function syncMain(){if(!$('#pn'))return;var r=S.profile;r.name=$('#pn').value.trim();r.headline=$('#ph').value.trim();r.rate=Number($('#pr').value)||'';r.skills=$('#ps').value.trim();r.bio=$('#pb').value.trim();r.avail=$('#pa').value;r.hours=$('#phr').value.trim();r.minp=Number($('#pm2').value)||'';r.langs=$('#pl').value.trim();r.tools=$('#pt').value.trim();commitDrafts()}
 function commitDrafts(){[['sv','services'],['pf','portfolio'],['ex','exp']].forEach(function(a){var t=$('#'+a[0]+'-t'),d=$('#'+a[0]+'-d');if(!t||!t.value.trim())return;var o={id:S.next++,title:t.value.trim(),desc:d?d.value.trim():''};if(a[0]==='sv'){var pr=$('#sv-p');o.price=Number(pr&&pr.value)||0;if(pr)pr.value=''}S.profile[a[1]].push(o);t.value='';if(d)d.value=''})}
 function delItem(key,id){syncMain();S.profile[key]=S.profile[key].filter(function(x){return x.id!==id});save();render()}
-function pickPhoto(inp){var f=inp.files&&inp.files[0];if(!f)return;syncMain();var rd=new FileReader();rd.onload=function(){var im=new Image();im.onload=function(){try{var c=document.createElement('canvas'),n=240,s=Math.min(im.width,im.height);c.width=c.height=n;c.getContext('2d').drawImage(im,(im.width-s)/2,(im.height-s)/2,s,s,0,0,n,n);S.profile.photo=c.toDataURL('image/jpeg',0.82);save();render();photoUp(S.profile.photo)}catch(e){toast('Could not use that image')}};im.onerror=function(){toast('Could not read that image')};im.src=rd.result};rd.readAsDataURL(f)}
+function pickPhoto(inp){var f=inp.files&&inp.files[0];if(!f)return;syncMain();var rd=new FileReader();
+ rd.onload=function(){peLoad(rd.result,false)};rd.onerror=function(){toast('Could not read that image')};rd.readAsDataURL(f);inp.value=''}
 function rmPhoto(){syncMain();S.profile.photo='';S.profile.photoPath='';save();render();photoDel()}
 function profileForm(){var r=S.profile,n=pname(UID);
 return '<h1>'+tx('profile')+'</h1><p class="sub">'+(r.headline?'This is what clients see when they review your proposals.':'Required before you can send proposals. You can browse jobs without one.')+'</p>'
-+sec('Profile photo','A clear headshot builds trust.','<div class="row" style="justify-content:flex-start;gap:14px">'+avatar(r,n,72)+'<div><label class="fbtn">Upload photo<input type="file" accept="image/*" onchange="pickPhoto(this)"></label><label class="fbtn">Take photo<input type="file" accept="image/*" capture="user" onchange="pickPhoto(this)"></label><div class="note" style="margin:0">On a phone, Take photo opens your camera.</div>'+(r.photo?'<button class="link" style="margin:6px 0 0" onclick="rmPhoto()">Remove photo</button>':'')+'</div></div>')
++sec('Profile photo','A clear headshot builds trust.','<div class="row" style="justify-content:flex-start;gap:14px">'+avatar(r,n,72)+'<div><label class="fbtn">Upload photo<input type="file" accept="image/*" onchange="pickPhoto(this)"></label><label class="fbtn">Take photo<input type="file" accept="image/*" capture="user" onchange="pickPhoto(this)"></label><div class="note" style="margin:0">On a phone, Take photo opens your camera.</div>'+(r.photo?'<button class="link" style="margin:6px 14px 0 0" onclick="editPhoto()">Edit photo</button><button class="link" style="margin:6px 0 0" onclick="rmPhoto()">Remove photo</button><div class="note" style="margin:4px 0 0">Clients see this photo on your profile and proposals.</div>':'')+'</div></div>')
 +sec('About you','','<label for="pn" style="margin-top:0">Name</label><input id="pn" maxlength="60" value="'+esc(r.name)+'"><label for="ph">Profile title</label><input id="ph" maxlength="80" placeholder="e.g. Brand designer for small businesses" value="'+esc(r.headline)+'"><label for="pb">Profile overview</label><textarea id="pb" maxlength="1000" placeholder="Who you are, what you do best and how you work with clients.">'+esc(r.bio)+'</textarea><label for="ps">Skills</label><input id="ps" placeholder="Search below to add skills" value="'+esc(r.skills)+'">'+picker('ps'))
 +sec('Availability and working hours','Let clients know when you can start and when you work.','<label for="pa" style="margin-top:0">Availability</label><select id="pa">'+['','Available now','Part-time','Limited availability','Not available'].map(function(o){return '<option value="'+o+'"'+(r.avail===o?' selected':'')+'>'+(o||'Select')+'</option>'}).join('')+'</select><label for="phr">Working hours</label><input id="phr" maxlength="80" placeholder="e.g. Mon–Fri, 9am–5pm (EAT)" value="'+esc(r.hours)+'">')
 +sec('Pricing and hourly rate','','<label for="pr" style="margin-top:0">Hourly rate (USD)</label><input id="pr" type="number" inputmode="numeric" min="0" value="'+esc(r.rate)+'"><label for="pm2">Minimum project price (USD)</label><input id="pm2" type="number" inputmode="numeric" min="0" value="'+esc(r.minp)+'">')
@@ -709,7 +711,7 @@ function finishEmailLocal(){ME.email=pend.newEmail;asave();pend=null;ecs=0;aerr=
 /* ---------- Profiles on Supabase (follow the account across devices) ---------- */
 var profSeen={},profBatch=[],profTimer=0,UUID_RE=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function csv(x){return String(x||'').split(',').map(function(v){return v.trim()}).filter(Boolean)}
-function phUrl(path,v){return SUBCFG.SUPABASE_URL.replace(/\/$/,'')+'/storage/v1/object/public/avatars/'+path+(v?'?v='+encodeURIComponent(v):'')}
+function phUrl(path,v){return SUBCFG.SUPABASE_URL.replace(/\/$/,'')+'/storage/v1/object/public/avatars/'+String(path).split('/').map(encodeURIComponent).join('/')+(v?'?v='+encodeURIComponent(v):'')}
 function fromDb(p,items){var r=newProf(p.name||'');r.name=p.name||'';r.headline=p.headline||'';r.bio=p.bio||'';r.skills=(p.skills||[]).join(', ');r.langs=(p.langs||[]).join(', ');r.tools=(p.tools||[]).join(', ');r.avail=p.avail||'';r.hours=p.hours||'';
  r.rate=p.rate==null?'':Number(p.rate);r.minp=p.minp==null?'':Number(p.minp);r.photoPath=p.photo_path||'';r.photo=p.photo_path?phUrl(p.photo_path,p.updated_at):'';
  (items||[]).forEach(function(x){var o={id:S.next++,title:x.title,desc:x.description||''};if(x.kind==='service'){o.price=Number(x.price)||0;r.services.push(o)}else if(x.kind==='portfolio')r.portfolio.push(o);else r.exp.push(o)});return r}
@@ -717,8 +719,13 @@ function softRender(){var a=document.activeElement,t=a&&a.tagName;if(t==='INPUT'
 function dataToBlob(d){var m=/^data:([^;]+);base64,(.*)$/.exec(d||'');if(!m)return null;var b=atob(m[2]),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return new Blob([a],{type:m[1]})}
 function sbUpload(path,blob,tok){return fetch(SUBCFG.SUPABASE_URL.replace(/\/$/,'')+'/storage/v1/object/avatars/'+path,{method:'POST',headers:{apikey:SUBCFG.SUPABASE_ANON_KEY,Authorization:'Bearer '+tok,'Content-Type':blob.type,'x-upsert':'true','cache-control':'max-age=3600'},body:blob}).then(function(r){return r.ok})}
 function photoUp(d){if(!subCfgOk()||!UID)return;var b=dataToBlob(d),u=UID;if(!b)return;
- sbToken().then(function(t){if(!t)throw 0;return sbUpload(u+'/avatar.jpg',b,t)}).then(function(ok){if(!ok)throw 0;if(S.profile&&UID===u){S.profile.photoPath=u+'/avatar.jpg';save()}}).catch(function(){toast('Photo kept here, but it couldn’t be uploaded. Try again.')})}
-function photoDel(){if(!subCfgOk()||!UID)return;var u=UID;sbToken().then(function(t){if(t)return sbReq('DELETE','/storage/v1/object/avatars/'+u+'/avatar.jpg',null,t)}).catch(function(){})}
+ sbToken().then(function(t){if(!t)throw 0;return sbUpload(u+'/avatar.jpg',b,t).then(function(ok){if(!ok)throw 0;
+  return sbReq('PATCH','/rest/v1/profiles?id=eq.'+u,{photo_path:u+'/avatar.jpg'},t,{Prefer:'return=minimal'})})}).then(function(r){
+  if(S.profile&&UID===u){S.profile.photoPath=u+'/avatar.jpg';save()}
+  toast(r.ok?'Photo saved. Clients can now see it.':'Photo uploaded. Tap Save profile to show it to clients.')
+ }).catch(function(){toast('Photo kept here, but it couldn’t be uploaded. Try again.')})}
+function photoDel(){if(!subCfgOk()||!UID)return;var u=UID;
+ sbToken().then(function(t){if(!t)return;return sbReq('PATCH','/rest/v1/profiles?id=eq.'+u,{photo_path:null},t,{Prefer:'return=minimal'}).then(function(){return sbReq('DELETE','/storage/v1/object/avatars/'+u+'/avatar.jpg',null,t)})}).catch(function(){})}
 function profPush(){if(!subCfgOk()||!UID||!S.profile)return Promise.resolve(null);var r=S.profile;
  var P={name:r.name,headline:r.headline,bio:r.bio,skills:csv(r.skills),langs:csv(r.langs),tools:csv(r.tools),avail:r.avail||'',hours:r.hours||'',rate:r.rate===''?null:r.rate,minp:r.minp===''?null:r.minp,photo_path:r.photoPath||null};
  var I=[];(r.services||[]).forEach(function(x){I.push({kind:'service',title:x.title,description:x.desc||'',price:x.price||null})});
@@ -902,6 +909,47 @@ function mfaCard(){if(!subCfgOk())return '';var H='<div class="card"><h2>Two-fac
  return H+'<p class="note" style="margin:0 0 10px">Add a second step to your login: a 6-digit code from an authenticator app. It is optional.</p>'+(mfa.err?'<p class="err" role="alert">'+esc(mfa.err)+'</p>':'')+'<button class="btn" onclick="mfaStart()"'+(mfa.busy?' disabled':'')+'>'+(mfa.busy?'Working…':'Turn on two-factor login')+'</button></div>'}
 /* a saved password-only session for someone who has since turned 2FA on is not trusted */
 function mfaGuard(){sbToken().then(function(t){return t?mfaFactorFrom(t):null}).then(function(fid){if(fid){toast('Please log in again with your 2FA code');logout()}}).catch(function(){})}
+
+/* ---------- Profile photo editor: move, zoom and rotate before the photo is saved ---------- */
+var pe=null;
+function peDims(){var s=pe,sw=(s.rot%180)?s.h:s.w,sh=(s.rot%180)?s.w:s.h;return{rw:sw,rh:sh}}
+function peClamp(){var s=pe,d=peDims(),sc=s.P/Math.min(d.rw,d.rh)*s.z,mx=Math.max(0,(d.rw*sc-s.P)/2),my=Math.max(0,(d.rh*sc-s.P)/2);s.ox=Math.max(-mx,Math.min(mx,s.ox));s.oy=Math.max(-my,Math.min(my,s.oy))}
+function peRender(ctx,N,mask){var s=pe,k=N/s.P,d=peDims(),sc=N/Math.min(d.rw,d.rh)*s.z;
+ ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#fff';ctx.fillRect(0,0,N,N);
+ ctx.save();ctx.translate(N/2+s.ox*k,N/2+s.oy*k);ctx.rotate(s.rot*Math.PI/180);ctx.scale(sc,sc);ctx.drawImage(s.im,-s.w/2,-s.h/2);ctx.restore();
+ if(mask){ctx.save();ctx.fillStyle='rgba(0,0,0,.55)';ctx.beginPath();ctx.rect(0,0,N,N);ctx.arc(N/2,N/2,N/2-3,0,Math.PI*2,true);ctx.fill('evenodd');ctx.restore();
+  ctx.strokeStyle='rgba(255,255,255,.9)';ctx.lineWidth=2;ctx.beginPath();ctx.arc(N/2,N/2,N/2-3,0,Math.PI*2);ctx.stroke()}}
+function peDraw(){if(!pe)return;var c=$('#pec');if(c)peRender(c.getContext('2d'),pe.P,true);var q=$('#pep');if(q)peRender(q.getContext('2d'),64,false)}
+function peDrag(dx,dy){if(!pe)return;pe.ox+=dx;pe.oy+=dy;peClamp();peDraw()}
+function peZoom(z){if(!pe)return;pe.z=Math.max(1,Math.min(4,z||1));var r=$('#pez');if(r)r.value=pe.z;peClamp();peDraw()}
+function peRot(a){if(!pe)return;pe.rot=((pe.rot+a)%360+360)%360;pe.ox=0;pe.oy=0;peClamp();peDraw()}
+function peReset(){if(!pe)return;pe.rot=0;pe.z=1;pe.ox=0;pe.oy=0;var r=$('#pez');if(r)r.value=1;peDraw()}
+function peClose(){var e=document.getElementById('pe');if(e&&e.parentNode)e.parentNode.removeChild(e);pe=null}
+function peBind(c){var pts={},d0=0,z0=1,n=function(){return Object.keys(pts)};
+ c.addEventListener('pointerdown',function(e){if(c.setPointerCapture)try{c.setPointerCapture(e.pointerId)}catch(x){}pts[e.pointerId]={x:e.clientX,y:e.clientY};if(n().length===2){var a=pts[n()[0]],b=pts[n()[1]];d0=Math.hypot(a.x-b.x,a.y-b.y);z0=pe?pe.z:1}e.preventDefault()});
+ c.addEventListener('pointermove',function(e){var q=pts[e.pointerId];if(!q||!pe)return;var r=c.getBoundingClientRect(),f=pe.P/(r.width||pe.P),k=n();pts[e.pointerId]={x:e.clientX,y:e.clientY};
+  if(k.length===1)peDrag((e.clientX-q.x)*f,(e.clientY-q.y)*f);else if(k.length===2&&d0){var a=pts[k[0]],b=pts[k[1]];peZoom(z0*Math.hypot(a.x-b.x,a.y-b.y)/d0)}});
+ var up=function(e){delete pts[e.pointerId];d0=0};c.addEventListener('pointerup',up);c.addEventListener('pointercancel',up);
+ c.addEventListener('wheel',function(e){if(!pe)return;peZoom(pe.z*(e.deltaY<0?1.08:1/1.08));e.preventDefault()},{passive:false})}
+function peOpen(im,w,h){peClose();pe={im:im,w:w,h:h,rot:0,z:1,ox:0,oy:0,P:280};
+ var d=document.createElement('div');d.id='pe';d.setAttribute('role','dialog');d.setAttribute('aria-modal','true');d.setAttribute('aria-label','Adjust your photo');
+ d.style.cssText='position:fixed;left:0;top:0;right:0;bottom:0;z-index:9998;background:rgba(0,0,0,.62);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:16px';
+ d.innerHTML='<div class="card" style="width:100%;max-width:360px;margin:auto"><h2 style="margin:0 0 4px">Adjust your photo</h2><p class="note" style="margin:0 0 10px">Drag to move it. Use the slider to zoom. The circle is what clients will see.</p>'
+  +'<canvas id="pec" width="280" height="280" style="width:100%;max-width:280px;aspect-ratio:1/1;touch-action:none;display:block;margin:0 auto;border-radius:12px;background:#111;cursor:grab"></canvas>'
+  +'<label for="pez" style="margin-top:12px">Zoom</label><input id="pez" type="range" min="1" max="4" step="0.01" value="1" style="width:100%" oninput="peZoom(parseFloat(this.value))">'
+  +'<div class="row" style="justify-content:flex-start;gap:8px;margin-top:8px"><button class="btn ghost" onclick="peRot(-90)">Rotate left</button><button class="btn ghost" onclick="peRot(90)">Rotate right</button><button class="btn ghost" onclick="peReset()">Reset</button></div>'
+  +'<div class="row" style="justify-content:flex-start;gap:12px;margin:12px 0"><canvas id="pep" width="64" height="64" style="width:64px;height:64px;border-radius:50%;background:#fff;border:1px solid var(--line,#ccc)"></canvas><span class="note" style="margin:0">How it will look on your profile</span></div>'
+  +'<div class="row" style="justify-content:flex-start;gap:8px"><button class="btn" onclick="peApply()">Use this photo</button><button class="btn ghost" onclick="peClose()">Cancel</button></div></div>';
+ document.body.appendChild(d);var c=$('#pec');if(c)peBind(c);peDraw()}
+function peLoad(src,cors){var im=new Image();if(cors)im.crossOrigin='anonymous';
+ im.onload=function(){try{var w=im.naturalWidth||im.width,h=im.naturalHeight||im.height,m=Math.max(w,h),o=im;
+  if(m>1600){var c=document.createElement('canvas'),k=1600/m;c.width=Math.round(w*k);c.height=Math.round(h*k);c.getContext('2d').drawImage(im,0,0,c.width,c.height);o=c;w=c.width;h=c.height}   /* keep big phone photos light */
+  peOpen(o,w,h)}catch(e){toast('Could not use that image')}};
+ im.onerror=function(){toast('Could not read that image')};im.src=src}
+function editPhoto(){var r=S.profile;if(!r||!r.photo)return;syncMain();var u=r.photo,cors=u.indexOf('data:')!==0;peLoad(cors?u+(u.indexOf('?')<0?'?':'&')+'e='+Date.now():u,cors)}
+function peApply(){if(!pe)return;
+ try{var c=document.createElement('canvas');c.width=c.height=360;peRender(c.getContext('2d'),360,false);var d=c.toDataURL('image/jpeg',0.86);
+  peClose();S.profile.photo=d;save();render();photoUp(d)}catch(e){toast('Could not use that image. Try uploading it again.')}}
 
 /* ---------- Jobs, proposals, hiring, messages and reviews on Supabase ---------- */
 var wrk=false,jobsSig='',chatSig='',revSeen={},pollN=0;
