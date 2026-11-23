@@ -480,10 +480,22 @@ function subSync(){if(!subCfgOk()||!ME)return;
 function needSub(){if(subActive())return false;toast('Subscribe to post jobs and send proposals');go('plan');return true}
 function subBanner(){if(subActive())return '';var x=subGet();return '<div class="card"><b>'+(x?'Your subscription has ended':'Subscription required')+'</b><p class="note" style="margin:6px 0 10px">Posting jobs and sending proposals needs an active plan: $10 per month or $100 per year, paid in USDC on the '+payNet()+' network.'+(x?' Renew to continue.':'')+'</p><button class="btn" onclick="go(\'plan\')">'+(x?'Renew now':'View plans')+'</button></div>'}
 function subCard(){var x=subGet(),a=subActive();return '<div class="card"><h2>Subscription</h2><p style="margin:0 0 10px">'+(a?'<span class="tag ok">Active</span> until '+esc(fdate(x.expires_at)):x?'<span class="tag wait">Expired</span> on '+esc(fdate(x.expires_at)):'No active plan')+'</p><button class="btn'+(a?' ghost':'')+'" onclick="go(\'plan\')">'+(a?'Extend':x?'Renew':'Subscribe')+'</button></div>'}
-function fnPost(name,body,tok){return sbPost('/functions/v1/'+name,body,tok).then(function(r){if(!r.ok){try{console.error('payment service',name,r.status,r.body)}catch(z){}}return r},function(e){try{console.error('payment service unreachable',name,e)}catch(z){}return{ok:false,status:0,body:{error:'unreachable'}}})}
+function payDiag(){var base=SUBCFG.SUPABASE_URL.replace(/\/$/,''),K=SUBCFG.SUPABASE_ANON_KEY;pst.diag='Checking…';render();
+ var up=fetch(base+'/auth/v1/health',{mode:'no-cors'}).then(function(){return true},function(){return false});
+ var fn=fetch(base+'/functions/v1/create-invoice',{method:'POST',headers:{'Content-Type':'application/json',apikey:K,Authorization:'Bearer '+K},body:'{}'}).then(function(r){return r.json().catch(function(){return {}}).then(function(b){return{got:true,status:r.status,error:b&&b.error}})},function(){return{got:false,status:0}});
+ Promise.all([up,fn]).then(function(a){var u=a[0],r=a[1],m;
+  if(!u)m='Your browser can’t reach Supabase at all. Check your internet connection, VPN, ad blocker or firewall, and that the address inside this page ('+base+') is correct.';
+  else if(!r.got)m='Supabase is reachable, but the browser is blocked from calling the payment function. Most likely the function isn’t deployed with the exact name create-invoice, or “Verify JWT” is still switched on. Turn Verify JWT off, redeploy the function, and try again.';
+  else if(r.status===404)m='Supabase answered, but there is no function named create-invoice. Deploy it with exactly that name.';
+  else if(r.status>=500&&r.error==='server_misconfigured')m='The payment function is running but its settings are incomplete. Check the five secrets in Supabase.';
+  else if(r.status>=500)m='The payment function is deployed but crashed (status '+r.status+'). Open its Logs in Supabase.';
+  else m='The payment function is reachable and responding (status '+r.status+'). The connection is fine, so try the payment again.';
+  pst.diag=m;render()})}
+function fnPost(name,body,tok){return sbPost('/functions/v1/'+name,body,tok).then(function(r){if(!r.ok){try{console.error('payment service',name,r.status,r.body)}catch(z){}}return r},function(e){try{console.error('payment service unreachable',name,e)}catch(z){}return{ok:false,status:0,body:{error:'unreachable',url:SUBCFG.SUPABASE_URL.replace(/\/$/,'')+'/functions/v1/'+name}}})}
 function fnErr(r){return(r.body&&r.body.error)||(r.status===0?'unreachable':r.status===404?'not_deployed':r.status===401?'unauthorized':r.status>=500?'server_error':'')}
-function subErr(c){if(c==='unauthorized'){sbSave(null);pst.step='email'}return SUBERR[c]||'Something went wrong. Please try again.'}
-function subFail(){pst.busy=false;pst.err='Network problem. Please try again.';render()}
+function subErr(c,r){if(c==='unauthorized'){sbSave(null);pst.step='email'}var m=SUBERR[c]||'Something went wrong. Please try again.';if(c==='unreachable'&&r&&r.body&&r.body.url)m+=' ('+r.body.url+')';return m}
+var BUILD='2026-11-21.2';
+function subFail(e){pst.busy=false;var d=(e&&e.message)?String(e.message).replace(/[<>"']/g,'').slice(0,90):'';try{console.error('payment screen error',e)}catch(z){}pst.err='Network problem'+(d?' ('+d+')':'')+'. Please try again.';render()}
 function subReset(){pst={step:'choose',plan:null,inv:null,err:'',msg:'',busy:false,wallet:pst.wallet,tx:''};render()}
 function subCopy(v){try{navigator.clipboard.writeText(v);toast('Copied')}catch(e){toast('Press and hold to copy')}}
 function subPick(k){if(pst.busy)return;pst.plan=k;pst.err='';pst.msg='';pst.busy=true;sbToken().then(function(t){pst.busy=false;pst.step=t?'wallet':'email';render()}).catch(subFail)}
@@ -492,21 +504,22 @@ function subCheckCode(){var c=($('#sc').value||'').trim();if(!/^\d{6,10}$/.test(
  sbPost('/auth/v1/verify',{type:'email',email:subEmail(),token:c}).then(function(r){pst.busy=false;if(r.ok&&r.body.access_token){sbStore(r.body,subEmail());pst.step='wallet';subSync()}else pst.err='That code didn’t work. Check it and try again.';render()}).catch(subFail)}
 function subMakeInvoice(){var w=($('#sw').value||'').trim();pst.wallet=w;if(!/^0x[0-9a-fA-F]{40}$/.test(w)){pst.err='Enter a valid wallet address (0x followed by 40 characters).';render();return}if(pst.busy)return;pst.busy=true;pst.err='';
  sbToken().then(function(t){if(!t){pst.busy=false;pst.step='email';render();return}
-  return fnPost('create-invoice',{plan:pst.plan,payer_address:w},t).then(function(r){pst.busy=false;if(r.ok&&r.body.invoice_id){pst.inv=r.body;pst.step='pay'}else pst.err=subErr(fnErr(r));render()})}).catch(subFail)}
+  return fnPost('create-invoice',{plan:pst.plan,payer_address:w},t).then(function(r){pst.busy=false;if(r.ok&&r.body.invoice_id){pst.inv=r.body;pst.step='pay'}else pst.err=subErr(fnErr(r),r);render()})}).catch(subFail)}
 function subVerify(){var x=($('#sx').value||'').trim();pst.tx=x;if(!/^0x[0-9a-fA-F]{64}$/.test(x)){pst.err='Paste the transaction hash (0x followed by 64 characters).';pst.msg='';render();return}if(pst.busy)return;pst.busy=true;pst.err='';pst.msg='';
  sbToken().then(function(t){if(!t){pst.busy=false;pst.step='email';render();return}
   return fnPost('verify-payment',{invoice_id:pst.inv.invoice_id,tx_hash:x},t).then(function(r){pst.busy=false;var b=r.body||{};
    if(b.status==='confirmed'){subSet({plan:b.plan,expires_at:b.expires_at});pst.step='done'}
    else if(b.status==='pending_confirmations'){pst.msg='Payment found with '+b.confirmations+' of '+b.required+' confirmations. Try again in a minute.'}
-   else pst.err=subErr(b.status||fnErr(r));
+   else pst.err=subErr(b.status||fnErr(r),r);
    render()})}).catch(subFail)}
 function payNet(){return esc(SUBCFG.PAY_NETWORK||'Base')}
+function buildNote(){return '<p class="note" style="text-align:center;opacity:.6;margin:14px 0 0">Page version '+BUILD+'</p>'}
 function netCard(){return '<div class="card"><b>Payments are made on the '+payNet()+' network</b><p class="note" style="margin:6px 0 0">You pay in USDC on the '+payNet()+' network. Before you send, make sure your wallet is set to '+payNet()+' (not Ethereum or another network) and holds a little ETH on '+payNet()+' for the network fee.</p></div>'}
 function planView(){
- var x=subGet(),a=subActive(),H='<button class="link" onclick="go(\''+(role==='client'?'jobs':'find')+'\')">Back</button><h1>Subscription</h1><p class="sub">Posting jobs and sending proposals needs an active plan. Pay in USDC on the '+payNet()+' network, straight to our wallet. No card and no middleman.</p>';
+ var x=subGet(),a=subActive(),H='<button class="link" onclick="go(\''+(role==='client'?'jobs':'find')+'\')">Back</button><h1>Subscription</h1><p class="sub">Posting jobs and sending proposals needs an active plan. Pay in USDC on the '+payNet()+' network, straight to our wallet. No card and no middleman.</p>'+buildNote();
  H+='<div class="card"><div class="row"><b>Status</b>'+(a?'<span class="tag ok">Active</span>':x?'<span class="tag wait">Expired</span>':'<span class="tag">No plan</span>')+'</div><p class="note" style="margin:6px 0 0">'+(a?'Access runs until '+esc(fdate(x.expires_at))+'. Plans don’t renew by themselves; pay again to extend.':x?'Your plan ended on '+esc(fdate(x.expires_at))+'. Renew to post and send proposals again.':'Browsing, messaging and hiring are free.')+'</p></div>';
  if(!subCfgOk())return H+'<div class="card"><p style="margin:0">Payments aren’t switched on yet. The site owner needs to add the backend URL and key to <code>SUBCFG</code> in this file.</p></div>';
- var E=pst.err?'<p class="err" role="alert">'+esc(pst.err)+'</p>':'',B=pst.busy?' disabled':'',W=pst.busy?'Working…':'';
+ var E=(pst.err?'<p class="err" role="alert">'+esc(pst.err)+'</p>':'')+(pst.err&&/payment service/i.test(pst.err)?'<button class="link" style="margin:0 0 8px" onclick="payDiag()">Check the payment service</button>'+(pst.diag?'<p class="note">'+esc(pst.diag)+'</p>':''):''),B=pst.busy?' disabled':'',W=pst.busy?'Working…':'';
  var cancel='<button class="btn ghost" onclick="subReset()">Cancel</button>';
  if(pst.step==='choose')return H+netCard()+['monthly','yearly'].map(function(k){var p=PLANS[k];return '<div class="card"><div class="row"><h2>'+p.label+'</h2><span class="price">$'+p.price+' / '+p.per+'</span></div><p class="note" style="margin:4px 0 10px">'+(k==='yearly'?'Two months free compared with paying monthly.':'Pay again each month to keep access.')+'</p><button class="btn" onclick="subPick(\''+k+'\')"'+B+'>'+(W||((a||x?'Renew ':'Choose ')+p.label.toLowerCase()))+'</button></div>'}).join('');
  var P=PLANS[pst.plan]||PLANS.monthly,top='<div class="card"><div class="row"><b>'+P.label+' plan</b><span class="price">$'+P.price+' / '+P.per+'</span></div></div>';
